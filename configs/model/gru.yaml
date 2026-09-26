@@ -1,0 +1,9 @@
+# Small GRU baseline (non-transformer deep baseline).
+name: gru
+hidden: 64
+dropout: 0.2
+mc_dropout_T: 50
+_fast:
+  hidden: 16
+  mc_dropout_T: 5
+

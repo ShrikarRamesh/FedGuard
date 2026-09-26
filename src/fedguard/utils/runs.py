@@ -128,6 +128,21 @@ def create_run(
     return Run(dir=run_dir, experiment=experiment, seed=seed)
 
 
+def completed_runs(experiment: str, root: Path | None = None) -> dict[int, Path]:
+    """Latest completed run dir per seed for ``experiment`` (``{seed: dir}``)."""
+    base = (Path(root) if root is not None else runs_dir()) / experiment
+    out: dict[int, Path] = {}
+    if not base.exists():
+        return out
+    for d in sorted(base.iterdir()):  # sorted by timestamp -> later runs overwrite earlier ones
+        if d.is_dir() and (d / DONE_MARKER).exists() and "_" in d.name:
+            try:
+                out[int(d.name.rsplit("_", 1)[1])] = d
+            except ValueError:
+                continue
+    return out
+
+
 def find_completed(
     experiment: str, seed: int, config_hash: str | None = None, root: Path | None = None
 ) -> Path | None:

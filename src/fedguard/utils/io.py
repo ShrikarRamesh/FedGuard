@@ -23,19 +23,41 @@ def repo_root() -> Path:
     return Path.cwd()
 
 
+def _env(name: str) -> str | None:
+    """Process environment variable; on Windows fall back to the user-level value in the registry
+    (so terminals opened before ``setx`` still use the configured location)."""
+    if name in os.environ:
+        return os.environ[name]
+    if os.name == "nt":
+        try:
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                return str(winreg.QueryValueEx(k, name)[0])
+        except OSError:
+            return None
+    return None
+
+
 def data_dir() -> Path:
     """Root data directory (``FEDGUARD_DATA_DIR`` or ``<repo>/data``)."""
-    return Path(os.environ.get("FEDGUARD_DATA_DIR", repo_root() / "data"))
+    return Path(_env("FEDGUARD_DATA_DIR") or repo_root() / "data")
 
 
 def runs_dir() -> Path:
     """Root directory for run outputs (``FEDGUARD_RUNS_DIR`` or ``<repo>/runs``)."""
-    return Path(os.environ.get("FEDGUARD_RUNS_DIR", repo_root() / "runs"))
+    return Path(_env("FEDGUARD_RUNS_DIR") or repo_root() / "runs")
 
 
 def results_dir() -> Path:
-    """Aggregated results directory (``<repo>/results``)."""
-    return repo_root() / "results"
+    """Aggregated results directory (``FEDGUARD_RESULTS_DIR`` or ``<repo>/results``)."""
+    return Path(_env("FEDGUARD_RESULTS_DIR") or repo_root() / "results")
+
+
+def out_root(fast: bool = False) -> Path:
+    """Where a pipeline step writes aggregated outputs: ``results/`` or, with ``--fast``, ``results/fast/``
+    (same layout, so the app can be pointed at either)."""
+    return results_dir() / "fast" if fast else results_dir()
 
 
 def configs_dir() -> Path:

@@ -41,7 +41,7 @@ def test_fast_blocks_are_merged():
 def test_same_group_inheritance_is_flat():
     cfg = load_config("fl/fedprox")
     assert cfg.algorithm == "fedprox" and cfg.prox_mu == 0.01
-    assert cfg.local_epochs == 5 and "fl" not in cfg
+    assert cfg.local_steps == 500 and cfg.rounds == 40 and "fl" not in cfg
     adaptive = load_config("privacy/adaptive")
     assert adaptive.budget_rule == "adaptive" and adaptive.delta == 1e-5
 
@@ -83,10 +83,13 @@ def test_seeding_is_deterministic():
     assert rng_for(1, "x").integers(1 << 30) == rng_for(1, "x").integers(1 << 30)
 
 
-def test_cli_info_and_unimplemented():
+def test_cli_info_and_empty_report(tmp_path, monkeypatch):
     runner = CliRunner()
     res = runner.invoke(app, ["info"])
     assert res.exit_code == 0, res.output
     assert "data_dir" in json.loads(res.stdout)
+    # with no runs at all the report must still work and say "not run yet" (never invent numbers)
+    monkeypatch.setenv("FEDGUARD_RESULTS_DIR", str(tmp_path / "results"))
     res = runner.invoke(app, ["report", "--fast"])
-    assert res.exit_code == 2
+    assert res.exit_code == 0, res.output
+    assert "not run yet" in res.stdout

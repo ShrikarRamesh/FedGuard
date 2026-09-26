@@ -1,0 +1,4 @@
+# Main: synchronous FedProx (mu = 0.01), no DP.
+defaults: [data, model/patchtst, fl/fedprox, privacy/none, eval]
+experiment: fedprox
+seeds: [0, 1, 2]

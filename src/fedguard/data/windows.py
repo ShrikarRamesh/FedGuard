@@ -68,6 +68,16 @@ class NormStats:
     std: np.ndarray
     n_patients: int
     n_measurements: np.ndarray
+    clip_lo: np.ndarray | None = None  # set only for data-independent "public" stats (D3)
+    clip_hi: np.ndarray | None = None
+
+    @classmethod
+    def public(cls) -> NormStats:
+        """Data-independent clinical reference normalisation used by DP clients (D3)."""
+        from fedguard.privacy.public_norm import public_arrays
+
+        c, s, lo, hi = public_arrays()
+        return cls(c, s, 0, np.zeros(len(DYN), np.int64), lo, hi)
 
     @classmethod
     def fit(cls, data: ProcessedData, train_patient_idx: np.ndarray) -> NormStats:
@@ -128,7 +138,10 @@ def build_client_arrays(
     rows = data.rows_of(patient_idx)
     f = cfg.features
     spec = channel_spec(f.use_masks, f.use_deltas, list(f.static))
-    blocks = [np.nan_to_num((np.asarray(data.values_ffill[rows]) - stats.mean) / stats.std, nan=0.0)]
+    vals = np.asarray(data.values_ffill[rows])
+    if stats.clip_lo is not None:
+        vals = np.clip(vals, stats.clip_lo, stats.clip_hi)  # NaN stays NaN
+    blocks = [np.nan_to_num((vals - stats.mean) / stats.std, nan=0.0)]
     if f.use_masks:
         blocks.append((~np.isnan(np.asarray(data.values_raw[rows]))).astype(np.float32))
     if f.use_deltas:

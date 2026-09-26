@@ -243,6 +243,34 @@ def process(cfg: DataConfig, raw_dir: Path, out_dir: Path, workers: int | None =
     return manifest
 
 
+def export_node(src_dir: Path, out_dir: Path, patient_mask: np.ndarray) -> dict:
+    """Write a processed dir holding ONLY the selected patients (one hospital's data for a SuperNode)."""
+    src_dir, out_dir = Path(src_dir), Path(out_dir)
+    patients = pd.read_csv(src_dir / "patients.csv", dtype={"patient_id": str})
+    offsets = np.load(src_dir / "offsets.npy")
+    keep = np.flatnonzero(patient_mask)
+    rows = (
+        np.concatenate([np.arange(offsets[p], offsets[p + 1]) for p in keep])
+        if len(keep)
+        else np.zeros(0, np.int64)
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("values_raw", "values_ffill", "hours_since", "static_raw", "label"):
+        np.save(out_dir / f"{name}.npy", np.load(src_dir / f"{name}.npy", mmap_mode="r")[rows])
+    lens = offsets[keep + 1] - offsets[keep]
+    np.save(out_dir / "offsets.npy", np.concatenate([[0], np.cumsum(lens)]).astype(np.int64))
+    sub = patients.iloc[keep].reset_index(drop=True)
+    sub["row_start"] = np.concatenate([[0], np.cumsum(lens)[:-1]]).astype(np.int64) if len(keep) else []
+    sub.to_csv(out_dir / "patients.csv", index=False)
+    pd.DataFrame(
+        {"patient_id": sub["patient_id"], "node": sub["stratum"], "split": sub["split_name"]}
+    ).to_csv(out_dir / "splits.csv", index=False)
+    manifest = {"n_patients": int(len(sub)), "n_rows": int(len(rows)), "exported_from": str(src_dir),
+                "patients_per_stratum": sub["stratum"].value_counts().to_dict()}  # fmt: skip
+    write_json(out_dir / "manifest.json", manifest)
+    return manifest
+
+
 # ---------------------------------------------------------------------------------------------
 # Federated partitions
 

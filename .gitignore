@@ -12,7 +12,7 @@
 # aggregated results: only small files are committed (see results/README.md)
 results/**/*.npy
 results/**/*.pkl
-results/*_fast/
+results/fast/
 
 # secrets
 .env

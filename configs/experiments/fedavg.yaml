@@ -1,0 +1,4 @@
+# Main: synchronous FedAvg, no DP, per-site normalisation.
+defaults: [data, model/patchtst, fl/fedavg, privacy/none, eval]
+experiment: fedavg
+seeds: [0, 1, 2]

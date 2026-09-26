@@ -1,4 +1,6 @@
-# Main experiment: centralized PatchTST (upper bound), 3 seeds.
-defaults: [data, model/patchtst, train/centralized, privacy/none]
+# Main experiment: centralized PatchTST (upper bound) over the same 4-node patients, 3 seeds.
+defaults: [data, model/patchtst, train/centralized, privacy/none, eval]
 experiment: centralized
 seeds: [0, 1, 2]
+eval:
+  mc_dropout: true      # MC-Dropout predictions for alerts / calibration (M6)

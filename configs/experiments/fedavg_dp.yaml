@@ -1,0 +1,4 @@
+# Main: synchronous FedAvg + uniform patient-level DP (eps = 3 total per client).
+defaults: [data, model/patchtst, fl/fedavg, privacy/uniform, eval]
+experiment: fedavg_dp
+seeds: [0, 1, 2]

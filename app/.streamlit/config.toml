@@ -1,0 +1,27 @@
+# Run from the app/ directory so Streamlit picks this file up:  cd app && streamlit run streamlit_app.py
+[server]
+enableStaticServing = true      # serves app/static/ (fonts, fedguard_demo.html) at app/static/...
+headless = true
+runOnSave = false
+
+[browser]
+gatherUsageStats = false        # works fully offline
+
+[theme]
+base = "light"
+primaryColor = "#1F6E8C"
+backgroundColor = "#EDF2F1"
+secondaryBackgroundColor = "#F8FBFA"
+textColor = "#15283A"
+font = "Atkinson Hyperlegible, 'Segoe UI', system-ui, sans-serif"
+baseRadius = "0.75rem"
+
+[[theme.fontFaces]]
+family = "Atkinson Hyperlegible"
+url = "app/static/fonts/AtkinsonHyperlegible-Regular.ttf"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Atkinson Hyperlegible"
+url = "app/static/fonts/AtkinsonHyperlegible-Bold.ttf"
+weight = 700

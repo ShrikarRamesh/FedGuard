@@ -1,0 +1,5 @@
+# Evaluation settings shared by all runs.
+n_boot: 1000          # patient-level bootstrap resamples for 95% CIs
+mc_dropout: false     # store MC-Dropout mean/std predictions (enabled per experiment where alerts/calibration need it)
+_fast:
+  n_boot: 20

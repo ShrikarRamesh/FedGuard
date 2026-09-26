@@ -1,0 +1,4 @@
+# Main experiment: local-only PatchTST, each node alone (lower bound), 3 seeds.
+defaults: [data, model/patchtst, train/local, privacy/none, eval]
+experiment: local
+seeds: [0, 1, 2]

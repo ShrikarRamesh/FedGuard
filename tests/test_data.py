@@ -286,6 +286,25 @@ def test_client_indices_respect_partition(processed):
     assert (data.patients.loc[pooled, "unit"] != "UNK").all()
 
 
+def test_export_node_holds_only_that_node(processed, tmp_path):
+    from fedguard.data.physionet2019 import export_node
+
+    data, cfg, frames, _ = processed
+    clients = assign_clients(data.patients, cfg)
+    export_node(data.dir, tmp_path / "node", (clients == "B_SICU").to_numpy())
+    sub = ProcessedData.load(tmp_path / "node")
+    assert set(sub.patients["stratum"]) == {"B_SICU"}
+    assert len(sub.patients) == int((clients == "B_SICU").sum())
+    for i, pid in enumerate(sub.patients["patient_id"]):  # rows copied intact
+        np.testing.assert_array_equal(
+            np.asarray(sub.label[sub.offsets[i] : sub.offsets[i + 1]]), frames[pid]["SepsisLabel"].to_numpy()
+        )
+    # splits preserved, and the node's own scenario works (stats from its train patients only)
+    sc_clients = assign_clients(sub.patients, cfg)
+    tr = client_patient_indices(sub.patients, sc_clients, "B_SICU", "train")
+    assert len(tr) == int(((clients == "B_SICU") & (data.patients["split"] == 0)).sum())
+
+
 def test_eda_runs(processed, tmp_path):
     from fedguard.data.eda import run_eda
 

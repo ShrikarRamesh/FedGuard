@@ -80,6 +80,85 @@ Measured in M1: 15,617 of 40,336 patients have neither `Unit1` nor `Unit2` set (
 - Onset hour = first positive row + 6. The 426 patients positive from their first row are flagged `onset_ambiguous`, and lead-time statistics are reported with and without them.
 - The fast subset is a seeded random sample of 150 files per hospital (seed 42), identical between `download --fast` and `process --fast`. It is so small that some clients have one septic patient, so downstream metrics must return NaN (not crash) when a split has no positives.
 
+## D15. Normalisation at evaluation time (Adopted)
+
+- **Centralized** models use pooled training statistics, both in training and in evaluation.
+- **Local-only and non-DP federated** models: every patient, in training and in evaluation, is standardised with the training statistics of *its own* hospital node. Each site standardises its own data, which is how a deployed model would be used. This includes a local model evaluated on other nodes' patients in the global test set.
+- **DP** runs use the public reference normalisation everywhere (D3).
+
+## D16. Local work is K optimiser steps, not E full epochs (Adopted)
+
+The plan's default of 5 local epochs per round would cost about 5 centralized epochs per round, roughly 2.5 h per FL run on the RTX 4050, which is infeasible for 3 seeds × all methods. Measured throughput is about 13k windows/s.
+- Non-DP clients run **K = 500 AdamW steps of batch 64** (32k windows) per participation, over **R = 40** rounds. That is about 8 passes over each client's own data, roughly the compute of the centralized run (which early-stops after about 8 epochs).
+- Async runs get the same total number of local jobs (160 = 40 × 4).
+- AdamW state resets every participation (standard FedAvg). FedProx uses μ = 0.01.
+
+## D17. DP clients use AdamW on the privatised gradient (Adopted)
+
+Adam only sees noisy clipped gradients, so this is post-processing and changes nothing in the guarantee. It avoids tuning an SGD learning rate for a transformer under DP. Details:
+- AdamW state persists across a client's participations; it is a function of that client's own noisy outputs only.
+- Clipping C = 1.
+- Clients run no additional gradient-norm clipping on top.
+
+## D18. Simulated clock details (Adopted)
+
+- Job time = speed_i × samples/1000 × jitter (clipped at 0.5, seeded) plus 2 × model bytes / 100 Mbit/s.
+- **Sync:** the server waits for every online client; stragglers are the cost of synchrony. The `sync_timeout` (150 s) applies only to clients that go offline mid-job.
+- **Lost updates:** a client scheduled to be offline during its job is known in advance. It does not train and releases nothing, so its accountant is not charged.
+- **Async:** a client restarts from the newest global model immediately after each merge. Updates with staleness > 8 are dropped.
+- Local training seeds torch per (client, participation), so results do not depend on the order clients are simulated in (needed for the Flower cross-check, D19).
+
+## D19. Flower implementation and cross-check (Adopted)
+
+- **Runtime:** Flower 1.38 Message API (`ServerApp` with the built-in `FedAvg`/`FedProx` strategies, `ClientApp`) on the **Deployment Engine**. The Simulation Engine needs Ray, which is not installed and not needed. The Control API in 1.38 is HTTP; the SuperLink is started with `--host/--port 9093`.
+- **Shared code:** the ClientApp reuses FedGuard's `FLClient` (same model, data, per-client seed, local steps, aggregation weights). The participation counter comes from the server's `server-round`, because subprocess isolation runs every message in a fresh process.
+- **No patient data on the server.** Clients report their own validation AUROC for the live view. The server saves every round's global model, and `fedguard fl eval-checkpoints` scores those checkpoints with exactly the in-house evaluation.
+- **Cross-check (fast config, 2 rounds, 4 local SuperNodes):** all 8 per-client training losses match the in-house sync FedAvg to within 1e-7 (e.g. A_MICU round 1: 1.2944918632507325 in both). The full 40-round comparison is in PROGRESS.md.
+
+## D20. Async mixing parameters chosen on validation (Adopted)
+
+α₀ ∈ {0.5, 1, 2} at λ = 0.35, then λ ∈ {0.1, 1.0} at the best α₀. Selection uses the best global **validation** AUPRC of async FL without DP (seed 0). The chosen values are written into `configs/fl/fedguard_async.yaml`; the results are in PROGRESS.md and `results/tables/async_tuning.md`. Experiment queues run as parallel processes (up to 3 on the GPU). The simulated clock makes results independent of real-time contention.
+
+## D21. Ablations use one seed (Adopted)
+
+Main results (6 methods) and the privacy sweep use 3 seeds. Ablations use seed 0 only:
+- node count 2/4/8;
+- sync vs async under dropout and imbalance;
+- budget rules;
+- lookback 12/48;
+- MC-Dropout T.
+
+With one seed their differences are indicative, not significant, and they are reported as such (n = 1).
+
+## D22. Alert episodes and operating point (Adopted)
+
+- **Episodes:** a maximal run of consecutive alerting hours is one episode. A new run starting ≤ 6 h (the refractory period) after the previous episode ended is merged into it.
+- **True alarm:** an episode starting in [onset − 12 h, onset + 3 h] of a septic patient (onset = first positive label + 6). Every other episode is false.
+- **Risk score:** both policies use the **MC-Dropout mean** (T = 50), so the only difference is the gate.
+- **Operating point (validation only):**
+  - τ_r = argmax validation utility of threshold-only alerting;
+  - τ_σ = the gate minimising validation false alarms/100 patient-hours subject to patient-level sensitivity ≥ threshold-only − 2 percentage points.
+- The jointly utility-optimal (τ_r, τ_σ) and the full grids are also reported.
+- Lead time is reported with and without the 426 onset-ambiguous patients.
+
+## D23. Gradient-inversion threat model (Adopted)
+
+- **Victim:** the trained FedAvg global model (seed 0, no DP).
+- **What the server observes:** the gradient of a single full 24-hour window, batch size 1, dropout off, with the loss (including pos_weight) and padding mask known. This is the attacker's best case.
+- **Conditions:**
+  - raw gradient;
+  - clipping to C = 1 only;
+  - clipping plus Gaussian noise with the noise multiplier FedGuard's **largest** client uses at total ε ∈ {1, 3, 8} (the least noise of any client).
+- **Attack:** iDLG label inference, then cosine gradient matching (Adam, 400 steps, 3 restarts).
+- **Metrics:** Pearson r and MSE on the vital-sign value channels, over 50 test patients (half from septic hours), with patient-bootstrap CIs.
+
+## D24. DP-SGD hyperparameters chosen on validation (Adopted)
+
+The first FedAvg + DP run (ε = 3, logical batch 256, 5 patient-epochs per round, R_max = 40) needed noise multipliers of about 5. Validation AUROC plateaued near 0.62; test AUROC was 0.628.
+- **Grid:** logical batch {1024, 2048} (physical 256 via BatchMemoryManager) × patient-epochs per round {2, 5} × lr {5e-4, 1e-3, 2e-3}, using 4 of the combinations.
+- **Selection:** FedAvg + uniform DP at ε = 3, seed 0, on best validation AUPRC. The model and rounds are unchanged.
+- **Caveat:** this selection is not included in ε (docs/privacy.md). The chosen setting is used for every DP run.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

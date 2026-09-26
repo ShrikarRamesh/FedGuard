@@ -1,17 +1,22 @@
 # Synchronous FedAvg on the in-house simulated-clock engine.
 algorithm: fedavg
 mode: sync
-rounds: 30
-local_epochs: 5          # plan default; lowered and documented if it diverges on non-IID data
+rounds: 40
+local_steps: 500          # K local AdamW steps per participation (D16; replaces "5 local epochs")
 batch_size: 64
 lr: 1.0e-4
+weight_decay: 1.0e-2
+grad_clip: 1.0
 prox_mu: 0.0
-client_speed: [1.0, 1.35, 0.8, 2.3]   # compute-time multipliers (A_MICU, A_SICU, B_MICU, B_SICU)
+norm: site                # site = each client's own train stats; public = clinical reference (DP, D3)
+client_speed: [1.0, 1.35, 0.8, 2.3]   # compute-time multipliers in client-name order (A_MICU, A_SICU, B_MICU, B_SICU)
 speed_jitter: 0.1                     # seeded multiplicative jitter per local job
+time_per_1k: 1.0                      # simulated seconds per 1000 training samples at speed 1.0
+bandwidth_bytes_per_s: 12.5e6         # 100 Mbit/s LAN
 offline: []                           # list of [client, t_off, t_on] in simulated seconds
-sync_timeout: 60.0                    # simulated seconds the server waits for offline clients
-eval_every: 1
+sync_timeout: 150.0                   # simulated seconds the server waits for clients that went offline
+eval_every: 1                         # rounds between global validation evaluations
 
 _fast:
   rounds: 2
-  local_epochs: 1
+  local_steps: 5

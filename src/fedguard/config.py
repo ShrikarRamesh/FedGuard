@@ -129,6 +129,25 @@ class DataConfig(_Strict):
         return self
 
 
+def load_group(ref: str, fast: bool = False) -> DictConfig:
+    """Load one group file (e.g. ``model/gru``) as a standalone section, to replace ``cfg.<group>``."""
+    cfg = load_config(ref, fast=fast)
+    del cfg["fast"]
+    return cfg
+
+
+def experiment_config(
+    path: str | Path, fast: bool, overrides: list[str] | None = None, groups: dict[str, str] | None = None
+) -> DictConfig:
+    """Compose an experiment, then replace whole groups (``{"model": "model/gru"}``) and apply overrides."""
+    cfg = load_config(path, fast=fast)
+    for key, ref in (groups or {}).items():
+        cfg[key] = load_group(ref, fast=fast)
+    if overrides:
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(list(overrides)))
+    return cfg
+
+
 def load_data_config(fast: bool = False, overrides: list[str] | None = None) -> DataConfig:
     """Load and validate ``configs/data.yaml`` on its own (overrides use bare keys, e.g. ``lookback=12``)."""
     cfg = load_config("data", fast=fast, overrides=overrides)

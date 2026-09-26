@@ -1,0 +1,33 @@
+# Flower App (FAB) definition for FedGuard's Flower FedAvg/FedProx.
+# The components import the installed `fedguard` package, so every machine needs `pip install -e .`
+# of this repository (see docs/demo.md). Run with:  flwr run src/fedguard/fl/flower_app <connection> --stream
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fedguard-flower"
+version = "0.1.0"
+description = "FedGuard FedAvg/FedProx on the Flower Deployment Engine"
+license = { file = "LICENSE" }
+dependencies = ["flwr>=1.38.0,<1.39"]  # FAB format requires a ">=" lower bound; tested with 1.38.0
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.flwr.app]
+publisher = "fedguard"
+fab-format-version = 1
+flwr-version-target = "1.38.0"
+
+[tool.flwr.app.components]
+serverapp = "fedguard.fl.flower_app.server_app:app"
+clientapp = "fedguard.fl.flower_app.client_app:app"
+
+[tool.flwr.app.config]
+experiment = "experiments/fedavg"
+seed = 0
+fast = false
+num-server-rounds = 40
+num-clients = 4
+out-dir = ""

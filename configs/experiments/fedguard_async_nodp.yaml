@@ -1,0 +1,4 @@
+# Async aggregation without DP (sync-vs-async ablation; per-site normalisation).
+defaults: [data, model/patchtst, fl/fedguard_async, privacy/none, eval]
+experiment: async_nodp
+seeds: [0, 1, 2]

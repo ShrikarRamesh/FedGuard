@@ -3,9 +3,13 @@
 defaults: [fl/fedavg]
 algorithm: fedguard_async
 mode: async
-alpha0: 1.0              # tuned on validation; documented in docs/decisions.md
-staleness_fn: exp        # exp: s = exp(-lambda * tau) | poly: s = (1 + tau)^(-a)  (FedAsync)
+alpha0: 1.0              # tuned on validation (docs/decisions.md)
+staleness_fn: exp        # exp: s = exp(-lambda * tau) | poly: s = (1 + tau)^(-a)  (FedAsync) | const
 staleness_lambda: 0.35
 staleness_poly_a: 0.5
 max_staleness: 8         # updates staler than this are dropped
-total_updates: 120       # async budget, ~ rounds x clients for a like-for-like comparison
+total_updates: 160       # = rounds x clients: same number of local jobs as sync
+eval_every_updates: 4
+
+_fast:
+  total_updates: 8

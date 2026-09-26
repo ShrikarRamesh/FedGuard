@@ -1,0 +1,6 @@
+# Main: FedGuard = async aggregation + adaptive patient-level DP (+ MC-Dropout alerts downstream).
+defaults: [data, model/patchtst, fl/fedguard_async, privacy/adaptive, eval]
+experiment: fedguard
+seeds: [0, 1, 2]
+eval:
+  mc_dropout: true      # MC-Dropout predictions for alerts / calibration (M6)
