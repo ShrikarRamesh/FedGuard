@@ -1,0 +1,42 @@
+# data and experiment outputs (never commit patient data or large artefacts)
+data/
+runs/
+*.pt
+*.pth
+*.ckpt
+*.npz
+*.parquet
+!tests/fixtures/**
+
+# aggregated results: only small files are committed (see results/README.md)
+results/**/*.npy
+results/**/*.pkl
+
+# secrets
+.env
+.env.*
+*.key
+wandb/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# os / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# flower
+.flwr/

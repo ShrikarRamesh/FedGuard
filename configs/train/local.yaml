@@ -1,0 +1,17 @@
+# Local-only: each node trains alone on its own data with its own normalisation stats (lower bound).
+mode: local
+epochs: 30
+batch_size: 256
+lr: 1.0e-4
+weight_decay: 1.0e-2
+grad_clip: 1.0
+loss: bce
+focal_gamma: 2.0
+pos_weight: auto
+early_stopping_patience: 5
+early_stopping_metric: val_auprc
+num_workers: 0
+
+_fast:
+  epochs: 1
+  batch_size: 64

@@ -1,0 +1,17 @@
+# Synchronous FedAvg on the in-house simulated-clock engine.
+algorithm: fedavg
+mode: sync
+rounds: 30
+local_epochs: 5          # plan default; lowered and documented if it diverges on non-IID data
+batch_size: 64
+lr: 1.0e-4
+prox_mu: 0.0
+client_speed: [1.0, 1.35, 0.8, 2.3]   # compute-time multipliers (A_MICU, A_SICU, B_MICU, B_SICU)
+speed_jitter: 0.1                     # seeded multiplicative jitter per local job
+offline: []                           # list of [client, t_off, t_on] in simulated seconds
+sync_timeout: 60.0                    # simulated seconds the server waits for offline clients
+eval_every: 1
+
+_fast:
+  rounds: 2
+  local_epochs: 1

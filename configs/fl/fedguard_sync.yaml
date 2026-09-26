@@ -1,0 +1,3 @@
+# FedGuard components (DP + MC-Dropout alerts) on synchronous aggregation, for the sync-vs-async ablation.
+defaults: [fl/fedavg]
+algorithm: fedguard_sync

@@ -1,0 +1,18 @@
+# Own PatchTST (channel-mixing patches, LayerNorm, hand-written attention; Opacus-compatible).
+name: patchtst
+patch_len: 4        # hours
+patch_stride: 2     # hours -> 11 patches for L = 24
+d_model: 128
+n_layers: 4
+n_heads: 8
+d_ff: 256
+dropout: 0.2
+head_hidden: 64
+mc_dropout_T: 50
+
+_fast:
+  d_model: 32
+  n_layers: 1
+  n_heads: 4
+  d_ff: 64
+  mc_dropout_T: 5

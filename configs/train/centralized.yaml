@@ -1,0 +1,17 @@
+# Centralized: pool all nodes' training patients, pooled normalisation stats (upper bound).
+mode: centralized
+epochs: 30
+batch_size: 256
+lr: 1.0e-4
+weight_decay: 1.0e-2
+grad_clip: 1.0
+loss: bce            # bce | focal
+focal_gamma: 2.0
+pos_weight: auto     # auto = n_neg / n_pos from training prevalence
+early_stopping_patience: 5
+early_stopping_metric: val_auprc
+num_workers: 0
+
+_fast:
+  epochs: 1
+  batch_size: 64

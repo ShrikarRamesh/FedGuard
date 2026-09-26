@@ -1,0 +1,10 @@
+# DP-SGD per client (Opacus, RDP accountant, Poisson sampling). epsilon = TOTAL over all training.
+enabled: true
+unit: patient            # D2 (proposed): patient-level DP, one random window per sampled patient
+budget_rule: uniform     # uniform | adaptive | inverse | equal_noise
+epsilon: 3.0
+delta: 1.0e-5            # asserted < 1 / n_i (training patients of client i)
+max_grad_norm: 1.0
+r_max: 30                # max participations per client; noise calibrated for local_epochs x r_max
+logical_batch_size: 256
+physical_batch_size: 64  # BatchMemoryManager

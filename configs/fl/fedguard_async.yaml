@@ -1,0 +1,11 @@
+# FedGuard asynchronous aggregation: merge each update on arrival.
+#   w_global <- (1 - a_i) w_global + a_i w_client,   a_i = alpha0 * (n_i / N) * s(tau)
+defaults: [fl/fedavg]
+algorithm: fedguard_async
+mode: async
+alpha0: 1.0              # tuned on validation; documented in docs/decisions.md
+staleness_fn: exp        # exp: s = exp(-lambda * tau) | poly: s = (1 + tau)^(-a)  (FedAsync)
+staleness_lambda: 0.35
+staleness_poly_a: 0.5
+max_staleness: 8         # updates staler than this are dropped
+total_updates: 120       # async budget, ~ rounds x clients for a like-for-like comparison

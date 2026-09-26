@@ -1,0 +1,4 @@
+# FedGuard adaptive budgets: eps_i = eps * (a + (1 - a) * n_i / n_max)
+defaults: [privacy/uniform]
+budget_rule: adaptive
+adaptive_a: 0.55

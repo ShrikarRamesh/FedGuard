@@ -1,0 +1,29 @@
+# PhysioNet/CinC 2019 data pipeline. Paths are relative to FEDGUARD_DATA_DIR (default <repo>/data).
+raw_subdir: raw/physionet2019
+processed_subdir: processed
+
+# Patients with neither Unit1 nor Unit2 set. Main 4-node experiments: exclude (docs/decisions.md).
+unk_policy: exclude
+# unit = hospital x ICU unit (4 nodes); hospital = A/B (2 nodes); dirichlet = k synthetic nodes.
+partition: unit
+dirichlet_k: 8
+dirichlet_alpha: 0.5
+
+# Patient-level, stratified on "ever septic", per hospital x unit stratum (D4).
+split_fracs: [0.70, 0.15, 0.15]
+split_seed: 42
+
+lookback: 24
+features:
+  use_masks: true
+  use_deltas: true          # hours since last measurement, log-scaled, capped
+  delta_cap_hours: 48
+  static: [Age, Gender, ICULOS, HospAdmTime]
+  hospadm_clip_hours: 720
+
+expected_counts:
+  training_setA: 20336
+  training_setB: 20000
+
+_fast:
+  subset_per_hospital: 150   # deterministic seeded subset of patients per hospital

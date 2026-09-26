@@ -1,0 +1,4 @@
+# Synchronous FedProx: FedAvg + proximal term mu * ||w - w_global||^2 in the local objective.
+defaults: [fl/fedavg]
+algorithm: fedprox
+prox_mu: 0.01

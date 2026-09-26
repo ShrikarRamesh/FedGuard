@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FedGuard live demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF2F1; --panel:#F8FBFA; --ink:#15283A; --muted:#566A7B; --line:#C9D6D6; --soft:#DDE7E6;
+  --accent:#1F6E8C; --accent-ink:#FFFFFF; --alert:#C8413A; --warn:#B8790F; --ok:#2E7D5B;
+  --n1:#2E7D7A; --n2:#4C5FB8; --n3:#B7791F; --n4:#B0487A;
+  --mon-bg:#0B1620; --mon-line:#1E3242; --mon-text:#CFE0EA;
+  --v-hr:#63D98F; --v-map:#FF6B6B; --v-spo2:#5CC8F0; --v-resp:#F2D15C; --v-temp:#E9EEF2;
+  --font:"Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  --num:"Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1B26; --panel:#152433; --ink:#E2EBEF; --muted:#93A6B5; --line:#2A3E50; --soft:#1C2E3E;
+    --accent:#58B4D1; --accent-ink:#0B1620; --alert:#F06A5E; --warn:#E6B04A; --ok:#5CC08E;
+    --n1:#4FB3AE; --n2:#8394F0; --n3:#E0A745; --n4:#E07AAD;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1B26; --panel:#152433; --ink:#E2EBEF; --muted:#93A6B5; --line:#2A3E50; --soft:#1C2E3E;
+  --accent:#58B4D1; --accent-ink:#0B1620; --alert:#F06A5E; --warn:#E6B04A; --ok:#5CC08E;
+  --n1:#4FB3AE; --n2:#8394F0; --n3:#E0A745; --n4:#E07AAD;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--paper);border-bottom:1px solid var(--line);
+  display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;padding:12px clamp(16px,3vw,36px)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand svg{flex:none}
+.brand h1{margin:0;font-size:22px;line-height:1.1;letter-spacing:-.01em}
+.brand p{margin:0;font-size:13px;color:var(--muted)}
+.steps{display:flex;gap:4px;justify-content:center;flex-wrap:nowrap}
+.steps button{white-space:nowrap;border:0;background:transparent;padding:8px 14px;border-radius:999px;cursor:pointer;color:var(--muted);display:flex;gap:8px;align-items:center;font-weight:700;font-size:15px}
+.steps button .k{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1.5px solid currentColor;font-size:12px;font-family:var(--num)}
+.steps button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.steps button:hover:not([aria-selected="true"]){color:var(--ink);background:var(--soft)}
+.meta{display:flex;gap:8px;align-items:center}
+.chip{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.chip.real{background:var(--ok);color:var(--paper)}
+.chip.err{background:var(--alert);color:#fff}
+.btn{border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);padding:7px 14px;border-radius:10px;cursor:pointer;font-weight:700;font-size:14px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink)}
+.btn.icon{padding:7px 9px}
+
+main{padding:clamp(16px,3vw,36px);max-width:1440px;margin:0 auto}
+.view{display:none}
+.view.active{display:block}
+.vhead{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;margin-bottom:20px}
+.vhead h2{margin:0;font-size:clamp(26px,3vw,36px);line-height:1.1;letter-spacing:-.02em}
+.vhead p{margin:6px 0 0;color:var(--muted);max-width:68ch}
+.note{font-size:13px;color:var(--muted)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+.panel h3{margin:0 0 10px;font-size:15px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:7px 12px;cursor:pointer;font-size:14px;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ctl{display:grid;gap:14px}
+.ctl label{font-size:14px;font-weight:700;display:flex;justify-content:space-between;gap:10px}
+.ctl label output{font-family:var(--num);font-size:16px;color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.muted{color:var(--muted)}
+
+/* federation */
+.fed-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr);gap:18px}
+.map{padding:8px;align-self:start}
+.map svg{width:100%;height:auto;display:block}
+#fedHits rect:focus{outline:none}
+#fedHits rect:focus-visible{outline:none;stroke:var(--accent);stroke-width:4}
+.statline{display:flex;gap:28px;flex-wrap:wrap;padding:6px 10px 2px}
+.stat .v{font-family:var(--num);font-size:34px;font-weight:600;line-height:1}
+.stat .l{font-size:13px;color:var(--muted)}
+.log{font-size:13px;max-height:170px;overflow:auto;margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.log li{display:flex;gap:8px;align-items:baseline}
+.log .dot{width:8px;height:8px;border-radius:50%;flex:none;transform:translateY(-1px)}
+.log time{font-family:var(--num);color:var(--muted);min-width:44px}
+.eps{display:grid;gap:10px}
+.epsrow{display:grid;grid-template-columns:70px 1fr 92px;gap:10px;align-items:center;font-size:13px}
+.bar{height:10px;border-radius:6px;background:var(--soft);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:6px}
+.side{display:grid;gap:18px;align-content:start}
+
+/* attack */
+.att-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px}
+.bigmatch{font-family:var(--num);font-size:64px;line-height:1;font-weight:700}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* bedside */
+.bed-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);gap:18px}
+.monitor{background:var(--mon-bg);color:var(--mon-text);border-radius:18px;padding:16px;border:1px solid var(--mon-line)}
+.mon-top{display:flex;justify-content:space-between;align-items:center;font-size:14px;margin-bottom:10px;gap:12px;flex-wrap:wrap}
+.mon-top b{font-size:16px}
+.vitals{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.vital{border:1px solid var(--mon-line);border-radius:12px;padding:8px 10px}
+.vital .nm{font-size:13px;opacity:.8;display:flex;justify-content:space-between}
+.vital .val{font-family:var(--num);font-size:clamp(28px,3.4vw,44px);font-weight:600;line-height:1.05}
+.vital svg{width:100%;height:34px;display:block}
+.banner{margin-top:12px;border-radius:12px;padding:12px 14px;display:flex;gap:12px;align-items:center;font-size:17px;font-weight:700;transition:background .25s}
+.banner.calm{background:#12303A;color:#BFE3EE}
+.banner.hold{background:#3D3113;color:#F7DC8F}
+.banner.fire{background:#5A1714;color:#FFD9D5;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{background:#7A1E19}}
+@media (prefers-reduced-motion: reduce){.banner.fire{animation:none}}
+.banner small{font-weight:400;opacity:.85;font-size:14px}
+.riskwrap{margin-top:18px}
+.riskwrap svg{width:100%;height:auto;display:block}
+.patients{display:grid;gap:8px}
+.patients button{text-align:left;border:1.5px solid var(--line);background:transparent;border-radius:12px;padding:10px 12px;cursor:pointer}
+.patients button[aria-pressed="true"]{border-color:var(--accent);background:var(--soft)}
+.patients b{display:block}
+.patients span{font-size:13px;color:var(--muted)}
+.tally{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tally .box{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.tally .box .v{font-family:var(--num);font-size:30px;font-weight:600;line-height:1}
+.tally .box.fg{border-color:var(--accent)}
+.heat svg{width:100%;height:auto;display:block}
+
+/* results */
+.res-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.res-grid .wide{grid-column:1/-1}
+.res-grid svg{width:100%;height:auto;display:block}
+.alerts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.alerts .box{border:1px solid var(--line);border-radius:14px;padding:14px}
+.alerts .box.fg{border-color:var(--accent)}
+.alerts .v{font-family:var(--num);font-size:40px;font-weight:600;line-height:1}
+details{font-size:14px}
+details pre{background:var(--soft);padding:12px;border-radius:10px;overflow-x:auto;font-size:12px}
+
+svg text{font-family:var(--font)}
+.axis{stroke:var(--line)}
+.axl{fill:var(--muted);font-size:11px}
+
+@media (max-width: 980px){
+  .top{grid-template-columns:1fr auto}
+  .steps{grid-column:1/-1;order:3;justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap}
+  .fed-grid,.att-grid,.bed-grid,.res-grid{grid-template-columns:1fr}
+  .vitals{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width: 560px){
+  .vitals{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .brand p{display:none}
+  .meta .chip{display:none}
+  .top{gap:12px}
+  .alerts,.tally{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+      <path d="M18 2 L32 7 V17 C32 25.5 26 31.5 18 34 C10 31.5 4 25.5 4 17 V7 Z" fill="var(--accent)"/>
+      <polyline points="8,19 13,19 15.5,13 19,24 21.5,17 28,17" fill="none" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div><h1>FedGuard</h1><p>Hospitals learn together. Patient data stays home.</p></div>
+  </div>
+  <nav class="steps" role="tablist" aria-label="Demo sections">
+    <button role="tab" data-view="fed" aria-selected="true"><span class="k">1</span>Train together</button>
+    <button role="tab" data-view="att" aria-selected="false"><span class="k">2</span>Try to steal data</button>
+    <button role="tab" data-view="bed" aria-selected="false"><span class="k">3</span>At the bedside</button>
+    <button role="tab" data-view="res" aria-selected="false"><span class="k">4</span>Results</button>
+  </nav>
+  <div class="meta">
+    <span id="dataChip" class="chip" title="Illustrative numbers until you load your results file">Demo data</span>
+    <label class="btn ghost" title="Load a results.json exported from your experiments">Load results<input id="fileIn" type="file" accept=".json,application/json" hidden></label>
+    <button id="themeBtn" class="btn ghost icon" aria-label="Switch light or dark theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9A7 7 0 0 1 12 3z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+<!-- ================= 1. FEDERATION ================= -->
+<section id="v-fed" class="view active" aria-label="Train together">
+  <div class="vhead">
+    <div>
+      <h2>Four hospitals train one model</h2>
+      <p>Each hospital trains on its own patients. Only model updates travel to the server. Click a hospital to disconnect it and watch what the server does.</p>
+    </div>
+    <div class="row">
+      <button id="fedPlay" class="btn">Start training</button>
+      <button id="fedReset" class="btn ghost">Reset</button>
+    </div>
+  </div>
+  <div class="fed-grid">
+    <div class="panel map">
+      <svg id="fedSvg" viewBox="0 0 640 460" aria-label="Federated network of four hospitals and a server"><g id="fedDyn"></g><g id="fedHits"></g></svg>
+      <div class="statline">
+        <div class="stat"><div class="v" id="sAuc">0.720</div><div class="l">Global model AUROC</div></div>
+        <div class="stat"><div class="v" id="sVer">0</div><div class="l">Model updates merged</div></div>
+        <div class="stat"><div class="v" id="sTime">0.0 s</div><div class="l">Training time</div></div>
+        <div class="stat"><div class="v" id="sBytes">0</div><div class="l">Patient records sent</div></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="panel ctl">
+        <div>
+          <h3>How the server waits</h3>
+          <div class="seg" id="modeSeg">
+            <button data-v="sync" aria-pressed="false">Waits for everyone</button>
+            <button data-v="async" aria-pressed="true">Merges as they arrive</button>
+          </div>
+        </div>
+        <div>
+          <h3>Privacy protection</h3>
+          <div class="seg" id="privSeg">
+            <button data-v="none" aria-pressed="false">None</button>
+            <button data-v="uniform" aria-pressed="false">Same for all</button>
+            <button data-v="adaptive" aria-pressed="true">Adaptive</button>
+          </div>
+        </div>
+        <div id="epsCtl">
+          <label for="epsIn">Privacy budget ε per hospital <output id="epsOut">3</output></label>
+          <input id="epsIn" type="range" min="1" max="8" step="1" value="3">
+          <div class="note">Lower ε means more noise: stronger privacy, lower accuracy.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Accuracy over time</h3>
+        <svg id="fedChart" viewBox="0 0 420 200" role="img" aria-label="AUROC over training time"></svg>
+      </div>
+      <div class="panel">
+        <h3>Privacy budget used</h3>
+        <div class="eps" id="epsBars"></div>
+      </div>
+      <div class="panel">
+        <h3>Server log</h3>
+        <ul class="log" id="fedLog"></ul>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">Timing and message flow follow the FedGuard protocol. The accuracy curve on this screen is illustrative; real numbers are on the Results screen.</p>
+</section>
+
+<!-- ================= 2. ATTACK ================= -->
+<section id="v-att" class="view" aria-label="Try to steal data">
+  <div class="vhead">
+    <div>
+      <h2>Can an attacker rebuild a patient from an update?</h2>
+      <p>A gradient-inversion attack takes one hospital's model update and tries to reconstruct the vitals that produced it. Without privacy noise it works. With FedGuard's noise it fails.</p>
+    </div>
+    <div class="row">
+      <button id="attRun" class="btn">Run the attack</button>
+    </div>
+  </div>
+  <div class="att-grid">
+    <div class="panel">
+      <div class="legend" style="margin-bottom:8px">
+        <span><i style="background:var(--ink)"></i>Real patient (never leaves the hospital)</span>
+        <span><i style="background:var(--alert)"></i>Attacker's reconstruction</span>
+      </div>
+      <svg id="attSvg" viewBox="0 0 640 420" role="img" aria-label="Real versus reconstructed vital signs"></svg>
+    </div>
+    <div class="side">
+      <div class="panel ctl">
+        <div>
+          <h3>Update sent with</h3>
+          <div class="seg" id="attSeg">
+            <button data-v="off" aria-pressed="true">No privacy noise</button>
+            <button data-v="on" aria-pressed="false">FedGuard DP</button>
+          </div>
+        </div>
+        <div>
+          <label for="attEps">Privacy budget ε <output id="attEpsOut">3</output></label>
+          <input id="attEps" type="range" min="1" max="8" step="1" value="3">
+        </div>
+      </div>
+      <div class="panel">
+        <h3>How close is the reconstruction?</h3>
+        <div class="bigmatch" id="attMatch">–</div>
+        <p class="muted" id="attVerdict" style="margin:6px 0 0">Press “Run the attack”.</p>
+        <p class="note" id="attIter" style="margin:10px 0 0">Attack step 0 of 60</p>
+      </div>
+      <p class="note">Illustration of the attack's behaviour. Swap in the output of your own gradient-inversion experiment for the final presentation.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3. BEDSIDE ================= -->
+<section id="v-bed" class="view" aria-label="At the bedside">
+  <div class="vhead">
+    <div>
+      <h2>Replay an ICU stay, hour by hour</h2>
+      <p>The model runs 50 times with dropout on. It raises an alert only when the average risk is high and the 50 answers agree.</p>
+    </div>
+    <div class="row">
+      <button id="bedPlay" class="btn">Play</button>
+      <button id="bedRestart" class="btn ghost">Restart</button>
+    </div>
+  </div>
+  <div class="bed-grid">
+    <div>
+      <div class="monitor">
+        <div class="mon-top"><b id="monName">Bed 4</b><span id="monHour">ICU hour 0</span></div>
+        <div class="vitals" id="vitals"></div>
+        <div class="banner calm" id="banner" role="status" aria-live="polite"></div>
+      </div>
+      <div class="panel riskwrap">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <h3 style="margin:0">Sepsis risk in the next 6 hours</h3>
+          <div class="legend">
+            <span><i style="background:var(--accent)"></i>Average risk</span>
+            <span><i style="background:var(--accent);opacity:.25;height:10px"></i>Uncertainty</span>
+            <span>▲ threshold-only alarm</span>
+            <span style="color:var(--alert)">● FedGuard alert</span>
+          </div>
+        </div>
+        <svg id="riskSvg" viewBox="0 0 760 230" role="img" aria-label="Risk over time"></svg>
+        <input id="scrub" type="range" min="0" max="47" step="1" value="0" aria-label="Scrub through ICU hours">
+      </div>
+    </div>
+    <div class="side">
+      <div class="panel">
+        <h3>Choose a patient</h3>
+        <div class="patients" id="patList"></div>
+      </div>
+      <div class="panel">
+        <h3>Alarms so far</h3>
+        <div class="tally">
+          <div class="box"><div class="v" id="tThr">0</div><div class="note">Threshold only</div><div class="note" id="tThrF"></div></div>
+          <div class="box fg"><div class="v" id="tFg">0</div><div class="note">FedGuard</div><div class="note" id="tFgF"></div></div>
+        </div>
+      </div>
+      <div class="panel ctl">
+        <div>
+          <label for="thrRisk">Alert when risk is above <output id="thrRiskOut">0.65</output></label>
+          <input id="thrRisk" type="range" min="0.4" max="0.9" step="0.01" value="0.65">
+        </div>
+        <div>
+          <label for="thrStd">…and uncertainty is below <output id="thrStdOut">0.12</output></label>
+          <input id="thrStd" type="range" min="0.04" max="0.3" step="0.01" value="0.12">
+        </div>
+      </div>
+      <div class="panel heat">
+        <h3>Why: what drove the risk (last 12 hours)</h3>
+        <svg id="heatSvg" viewBox="0 0 360 200" role="img" aria-label="Contribution of each signal over the last 12 hours"></svg>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px" id="bedNote">Demo patients are synthetic. Load your results file to replay real test-set patients with your model's predictions.</p>
+</section>
+
+<!-- ================= 4. RESULTS ================= -->
+<section id="v-res" class="view" aria-label="Results">
+  <div class="vhead">
+    <div>
+      <h2>How close does FedGuard get to pooling all the data?</h2>
+      <p id="resSub">Local-only is the floor, centralized is the ceiling that the law forbids. FedGuard should sit near the ceiling while keeping every hospital's data at home.</p>
+    </div>
+  </div>
+  <div class="res-grid">
+    <div class="panel"><h3>AUROC by method</h3><svg id="resAuroc" viewBox="0 0 520 300"></svg></div>
+    <div class="panel"><h3>AUPRC by method</h3><svg id="resAuprc" viewBox="0 0 520 300"></svg></div>
+    <div class="panel"><h3>Privacy vs accuracy</h3><svg id="resPriv" viewBox="0 0 520 300"></svg></div>
+    <div class="panel">
+      <h3>False alarms</h3>
+      <div class="alerts" id="resAlerts"></div>
+    </div>
+    <div class="panel wide">
+      <details>
+        <summary><b>Results file format</b> <span class="muted">(export this from your Python code, then use “Load results”)</span></summary>
+<pre>{
+  "methods": [ {"name": "Local-only", "auroc": 0.72, "auprc": 0.07}, ... ],
+  "prevalence": 0.02,
+  "privacy": { "eps": [1, 2, 3, 5, 8], "uniform": [...], "adaptive": [...], "no_dp": 0.82 },
+  "alerts": {
+    "threshold_only": {"false_per_100h": 4.1, "sensitivity": 0.80},
+    "fedguard":       {"false_per_100h": 3.2, "sensitivity": 0.79}
+  },
+  "patients": [
+    { "name": "Test patient 1021", "onset_hour": 34,        // null if never septic
+      "hr": [...], "map": [...], "resp": [...], "temp": [...], "spo2": [...],
+      "risk_mean": [...], "risk_std": [...],            // one value per hour
+      "attr_features": ["HR","MAP", ...],               // optional explanation
+      "attr": [[...per feature...], ...]                 // one row per hour
+    }
+  ]
+}</pre>
+        <p class="note">Every key is optional. Whatever you include replaces the demo numbers.</p>
+      </details>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const clamp = (x,a,b) => Math.max(a, Math.min(b, x));
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function rng(seed){ let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r){ let u = 0, v = 0; while(!u) u = r(); while(!v) v = r(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sig = x => 1/(1+Math.exp(-x));
+
+/* ---------------- theme ---------------- */
+$('#themeBtn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  root.dataset.theme = cur === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('fg-theme', root.dataset.theme); } catch(e){}
+  renderAll();
+});
+try { const t = localStorage.getItem('fg-theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
+
+/* ---------------- navigation ---------------- */
+let currentView = 'fed';
+function showView(v){
+  currentView = v;
+  $$('.steps button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === v)));
+  $$('.view').forEach(s => s.classList.toggle('active', s.id === 'v-' + v));
+  renderAll();
+}
+$$('.steps button').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  const map = {'1':'fed','2':'att','3':'bed','4':'res'};
+  if (map[e.key]) { showView(map[e.key]); return; }
+  if (e.key === ' ') {
+    if (currentView === 'fed') { e.preventDefault(); toggleFed(); }
+    else if (currentView === 'bed') { e.preventDefault(); toggleBed(); }
+    else if (currentView === 'att') { e.preventDefault(); runAttack(); }
+  }
+});
+function seg(id, onChange){
+  const el = $(id);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    onChange(b.dataset.v);
+  });
+}
+
+/* =====================================================================
+   1. FEDERATION SIMULATION
+   ===================================================================== */
+const NODES = [
+  { id:'A-MICU', label:'Hospital A', unit:'Medical ICU',  n:7400, speed:1.0, c:'--n1', x:118, y:88 },
+  { id:'A-SICU', label:'Hospital A', unit:'Surgical ICU', n:5200, speed:1.35, c:'--n2', x:522, y:88 },
+  { id:'B-MICU', label:'Hospital B', unit:'Medical ICU',  n:3600, speed:0.8, c:'--n3', x:118, y:372 },
+  { id:'B-SICU', label:'Hospital B', unit:'Surgical ICU', n:2100, speed:2.3, c:'--n4', x:522, y:372 },
+];
+const SERVER = { x:320, y:230 };
+const NTOT = NODES.reduce((s,n) => s + n.n, 0), NMAX = Math.max(...NODES.map(n => n.n));
+const FLOOR = 0.72, CEIL = 0.86, PLANNED = 22, LAMBDA = 0.35, TIMEOUT = 6;
+const fed = { mode:'async', priv:'adaptive', eps:3, running:false };
+let fr = rng(7);
+
+function cssv(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function budget(n){ if (fed.priv === 'none') return Infinity; if (fed.priv === 'uniform') return fed.eps; return fed.eps * (0.55 + 0.45 * n.n / NMAX); }
+function privLoss(){ if (fed.priv === 'none') return 0; const base = 0.095 / Math.pow(fed.eps, 0.75); return fed.priv === 'adaptive' ? base * 0.72 : base; }
+function trainTime(n){ return n.speed * (2.0 + fr() * 0.9); }
+function aucNow(){ return FLOOR + (CEIL - FLOOR - privLoss()) * (1 - Math.exp(-fed.progress / 4.2)); }
+
+function resetFed(){
+  fr = rng(7);
+  Object.assign(fed, { t:0, version:0, progress:0, history:[{t:0, a:FLOOR}], log:[], packets:[], buf:new Set(), waitStart:null, finished:false, lastHist:0 });
+  NODES.forEach(n => { if (n.online === undefined) n.online = true; n.spent = 0; n.base = 0; n.state = n.online ? 'training' : 'offline'; n.finishAt = trainTime(n); });
+  logEv(null, 'Server started. Sent the starting model to all hospitals.');
+  setRunning(false);
+  renderFed();
+}
+function logEv(node, msg){ fed.log.unshift({ t:fed.t, c: node ? node.c : '--muted', msg }); if (fed.log.length > 40) fed.log.pop(); }
+function setRunning(r){ fed.running = r; $('#fedPlay').textContent = r ? 'Pause' : (fed.t > 0 && !fed.finished ? 'Resume training' : 'Start training'); }
+function toggleFed(){ if (fed.finished) resetFed(); setRunning(!fed.running); }
+$('#fedPlay').addEventListener('click', toggleFed);
+$('#fedReset').addEventListener('click', () => { NODES.forEach(n => n.online = true); resetFed(); });
+seg('#modeSeg', v => { fed.mode = v; resetFed(); });
+seg('#privSeg', v => { fed.priv = v; $('#epsCtl').style.opacity = v === 'none' ? .45 : 1; $('#epsIn').disabled = v === 'none'; resetFed(); });
+$('#epsIn').addEventListener('input', e => { fed.eps = +e.target.value; $('#epsOut').textContent = fed.eps; resetFed(); });
+
+function toggleNode(n){
+  n.online = !n.online;
+  if (n.online) { n.base = fed.version; n.state = n.spent >= budget(n) - 1e-9 ? 'exhausted' : 'training'; n.finishAt = fed.t + trainTime(n); logEv(n, `${n.id} reconnected and downloaded model v${fed.version}.`); }
+  else { n.state = 'offline'; fed.buf.delete(n.id); logEv(n, `${n.id} went offline.`); }
+  if (fed.mode === 'sync') checkSync();
+  renderFed();
+}
+
+function stepFed(dt){
+  fed.t += dt;
+  for (const n of NODES){
+    if (!n.online) continue;
+    if (n.state === 'training' && fed.t >= n.finishAt){
+      const b = budget(n);
+      if (n.spent >= b - 1e-9){ n.state = 'exhausted'; logEv(n, `${n.id} has used its whole privacy budget and stops.`); continue; }
+      if (b !== Infinity) n.spent = Math.min(b, n.spent + b / PLANNED);
+      n.state = 'sending';
+      fed.packets.push({ node:n, start:fed.t, dur:0.7, up:true });
+    }
+  }
+  for (const p of fed.packets.slice()){
+    if (fed.t >= p.start + p.dur){
+      fed.packets.splice(fed.packets.indexOf(p), 1);
+      if (p.up) arrive(p.node);
+    }
+  }
+  if (fed.mode === 'sync') checkSync();
+  if (fed.t - fed.lastHist >= 0.25){ fed.history.push({ t:fed.t, a:aucNow() }); fed.lastHist = fed.t; }
+  const active = NODES.filter(n => n.online && n.state !== 'exhausted');
+  if (fed.priv !== 'none' && active.length === 0 && fed.packets.length === 0 && NODES.some(n => n.online)){
+    fed.finished = true; logEv(null, 'Every hospital has used its privacy budget. Training is complete.'); setRunning(false);
+    $('#fedPlay').textContent = 'Run again';
+  }
+  if (fed.priv === 'none' && fed.t > 90){ fed.finished = true; logEv(null, 'Stopped after 90 s of training.'); setRunning(false); $('#fedPlay').textContent = 'Run again'; }
+}
+function arrive(n){
+  if (!n.online) return;
+  if (fed.mode === 'async'){
+    const stale = fed.version - n.base;
+    const w = (n.n / NTOT) * Math.exp(-LAMBDA * stale);
+    fed.progress += w * 1.05;
+    fed.version++;
+    logEv(n, `Merged ${n.id} (${stale ? stale + ' version' + (stale > 1 ? 's' : '') + ' behind' : 'up to date'}), weight ${w.toFixed(2)}.`);
+    n.base = fed.version; n.state = 'training'; n.finishAt = fed.t + trainTime(n);
+    fed.packets.push({ node:n, start:fed.t, dur:0.45, up:false });
+  } else {
+    fed.buf.add(n.id); n.state = 'waiting';
+    if (fed.waitStart === null) fed.waitStart = fed.t;
+    checkSync();
+  }
+}
+function checkSync(){
+  if (fed.buf.size === 0) return;
+  const need = NODES.filter(n => n.state !== 'exhausted' && !fed.buf.has(n.id));
+  const missingOnline = need.filter(n => n.online);
+  const missingOffline = need.filter(n => !n.online);
+  const timedOut = fed.t - fed.waitStart >= TIMEOUT;
+  if (missingOnline.length === 0 && (missingOffline.length === 0 || timedOut)){
+    const part = NODES.filter(n => fed.buf.has(n.id));
+    const frac = part.reduce((s,n) => s + n.n, 0) / NTOT;
+    fed.progress += frac * 1.1;
+    fed.version++;
+    if (missingOffline.length) logEv(null, `Gave up waiting for ${missingOffline.map(n => n.id).join(', ')} after ${TIMEOUT} s. Merged ${part.length} hospitals.`);
+    else logEv(null, `Round ${fed.version}: all ${part.length} hospitals reported. Merged.`);
+    part.forEach(n => { n.base = fed.version; n.state = 'training'; n.finishAt = fed.t + trainTime(n); fed.packets.push({ node:n, start:fed.t, dur:0.45, up:false }); });
+    fed.buf.clear(); fed.waitStart = null;
+  }
+}
+
+function renderFed(){
+  const ink = cssv('--ink'), line = cssv('--line'), muted = cssv('--muted'), panel = cssv('--panel'), accent = cssv('--accent'), accInk = cssv('--accent-ink'), warn = cssv('--warn');
+  let s = '';
+  for (const n of NODES){
+    s += `<line x1="${n.x}" y1="${n.y}" x2="${SERVER.x}" y2="${SERVER.y}" stroke="${line}" stroke-width="2" ${n.online ? '' : 'stroke-dasharray="4 6"'}/>`;
+  }
+  for (const p of fed.packets){
+    const f = clamp((fed.t - p.start) / p.dur, 0, 1);
+    const [ax, ay, bx, by] = p.up ? [p.node.x, p.node.y, SERVER.x, SERVER.y] : [SERVER.x, SERVER.y, p.node.x, p.node.y];
+    const x = ax + (bx - ax) * f, y = ay + (by - ay) * f;
+    const col = p.up ? cssv(p.node.c) : accent;
+    if (!reduceMotion){ const f2 = Math.max(0, f - .12); s += `<line x1="${ax + (bx-ax)*f2}" y1="${ay + (by-ay)*f2}" x2="${x}" y2="${y}" stroke="${col}" stroke-width="4" stroke-linecap="round" opacity=".35"/>`; }
+    s += `<circle cx="${x}" cy="${y}" r="${p.up ? 8 : 6}" fill="${col}"/>`;
+  }
+  // server
+  const waiting = fed.mode === 'sync' && fed.buf.size > 0;
+  s += `<g><circle cx="${SERVER.x}" cy="${SERVER.y}" r="62" fill="${panel}" stroke="${accent}" stroke-width="3"/>
+    <path transform="translate(${SERVER.x-14},${SERVER.y-44}) scale(.78)" d="M18 2 L32 7 V17 C32 25.5 26 31.5 18 34 C10 31.5 4 25.5 4 17 V7 Z" fill="${accent}"/>
+    <text x="${SERVER.x}" y="${SERVER.y+8}" text-anchor="middle" font-weight="700" font-size="16" fill="${ink}">Server</text>
+    <text x="${SERVER.x}" y="${SERVER.y+28}" text-anchor="middle" font-size="13" fill="${muted}">model v${fed.version}</text>
+    ${waiting ? `<text x="${SERVER.x}" y="${SERVER.y+84}" text-anchor="middle" font-size="13" font-weight="700" fill="${warn}">waiting ${ (fed.t - fed.waitStart).toFixed(1)} s for ${NODES.filter(n => n.state !== 'exhausted' && !fed.buf.has(n.id)).map(n=>n.id).join(', ')}</text>` : ''}
+  </g>`;
+  // nodes
+  const stateText = { training:'training locally', sending:'sending update', waiting:'idle, waiting', offline:'offline', exhausted:'budget used up' };
+  for (const n of NODES){
+    const col = cssv(n.c);
+    const b = budget(n), frac = b === Infinity ? 0 : n.spent / b;
+    const prog = n.state === 'training' && n.online ? clamp(1 - (n.finishAt - fed.t) / (n.speed * 2.45), 0, 1) : 0;
+    const w = 192, h = 92, x0 = n.x - w/2, y0 = n.y - h/2;
+    s += `<g>
+      <rect x="${x0}" y="${y0}" width="${w}" height="${h}" rx="16" fill="${panel}" stroke="${col}" stroke-width="${n.online ? 3 : 1.5}" ${n.online ? '' : 'stroke-dasharray="5 5"'} opacity="${n.online ? 1 : .6}"/>
+      <text x="${x0+20}" y="${y0+26}" font-weight="700" font-size="16" fill="${ink}">${n.id}</text>
+      <text x="${x0+20}" y="${y0+44}" font-size="12" fill="${muted}">${n.unit}, ${n.n.toLocaleString()} patients</text>
+      <text x="${x0+20}" y="${y0+64}" font-size="13" font-weight="700" fill="${n.state === 'offline' || n.state === 'exhausted' ? muted : col}">${stateText[n.state]}</text>
+      <rect x="${x0+20}" y="${y0+72}" width="${w-36}" height="6" rx="3" fill="${line}"/>
+      <rect x="${x0+20}" y="${y0+72}" width="${(w-36)*prog}" height="6" rx="3" fill="${col}"/>
+    </g>`;
+  }
+  $('#fedDyn').innerHTML = s;
+  NODES.forEach(n => { const hit = document.querySelector(`#fedHits [data-id="${n.id}"]`); if (hit) hit.setAttribute('aria-label', `${n.id}: ${stateText[n.state]}. Press to ${n.online ? 'disconnect' : 'reconnect'}.`); });
+  $('#sAuc').textContent = aucNow().toFixed(3);
+  $('#sVer').textContent = fed.version;
+  $('#sTime').textContent = fed.t.toFixed(1) + ' s';
+  // eps bars
+  $('#epsBars').innerHTML = NODES.map(n => {
+    const b = budget(n), col = cssv(n.c);
+    if (b === Infinity) return `<div class="epsrow"><b>${n.id}</b><div class="bar"><i style="width:0"></i></div><span class="muted">no limit</span></div>`;
+    return `<div class="epsrow"><b>${n.id}</b><div class="bar"><i style="width:${(n.spent/b*100).toFixed(1)}%;background:${col}"></i></div><span>${n.spent.toFixed(2)} / ${b.toFixed(2)}</span></div>`;
+  }).join('') + (fed.priv === 'none' ? '<p class="note" style="margin:4px 0 0">No privacy noise: updates can leak patient data (see step 2).</p>' : fed.priv === 'adaptive' ? '<p class="note" style="margin:4px 0 0">Adaptive: each hospital gets its own ε based on how many patients it has.</p>' : '');
+  // log
+  $('#fedLog').innerHTML = fed.log.map(l => `<li><span class="dot" style="background:${cssv(l.c)}"></span><time>${l.t.toFixed(1)}s</time><span>${esc(l.msg)}</span></li>`).join('');
+  renderFedChart();
+}
+function renderFedChart(){
+  const W = 420, H = 200, L = 40, R = 10, T = 12, B = 26;
+  const tmax = Math.max(40, fed.t * 1.08);
+  const y0 = 0.70, y1 = 0.88;
+  const X = t => L + (W - L - R) * t / tmax, Y = a => T + (H - T - B) * (1 - (a - y0) / (y1 - y0));
+  const ink = cssv('--ink'), line = cssv('--line'), muted = cssv('--muted'), accent = cssv('--accent'), ok = cssv('--ok'), alert = cssv('--alert');
+  let s = '';
+  [0.72, 0.76, 0.80, 0.84, 0.88].forEach(v => { s += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}" stroke-width="1"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" class="axl">${v.toFixed(2)}</text>`; });
+  s += `<line x1="${L}" x2="${W-R}" y1="${Y(CEIL)}" y2="${Y(CEIL)}" stroke="${ok}" stroke-dasharray="5 4" stroke-width="1.5"/><text x="${W-R}" y="${Y(CEIL)-5}" text-anchor="end" font-size="11" fill="${ok}">centralized (not allowed)</text>`;
+  s += `<line x1="${L}" x2="${W-R}" y1="${Y(FLOOR)}" y2="${Y(FLOOR)}" stroke="${alert}" stroke-dasharray="5 4" stroke-width="1.5"/><text x="${W-R}" y="${Y(FLOOR)-5}" text-anchor="end" font-size="11" fill="${alert}">each hospital alone</text>`;
+  const pts = fed.history.map(h => `${X(h.t).toFixed(1)},${Y(h.a).toFixed(1)}`).join(' ');
+  s += `<polyline points="${pts}" fill="none" stroke="${accent}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const last = fed.history[fed.history.length - 1];
+  s += `<circle cx="${X(last.t)}" cy="${Y(last.a)}" r="4.5" fill="${accent}"/>`;
+  s += `<text x="${L}" y="${H-6}" class="axl">0 s</text><text x="${W-R}" y="${H-6}" text-anchor="end" class="axl">${tmax.toFixed(0)} s</text>`;
+  $('#fedChart').innerHTML = s;
+}
+$('#fedHits').innerHTML = NODES.map(n => `<rect class="node" data-id="${n.id}" x="${n.x-96}" y="${n.y-46}" width="192" height="92" rx="16" fill="transparent" style="cursor:pointer" tabindex="0" role="button"/>`).join('');
+$('#fedSvg').addEventListener('click', e => { const g = e.target.closest('.node'); if (g) toggleNode(NODES.find(n => n.id === g.dataset.id)); });
+$('#fedSvg').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.node')) { e.preventDefault(); e.stopPropagation(); toggleNode(NODES.find(n => n.id === e.target.closest('.node').dataset.id)); } });
+
+/* =====================================================================
+   2. ATTACK
+   ===================================================================== */
+const att = { dp:false, eps:3, iter:0, running:false, seed:11 };
+const CH = [
+  { k:'HR', name:'Heart rate', unit:'bpm', base:92, amp:14, sd:12, col:'--v-hr' },
+  { k:'MAP', name:'Mean arterial pressure', unit:'mmHg', base:74, amp:-10, sd:10, col:'--v-map' },
+  { k:'Resp', name:'Respiratory rate', unit:'/min', base:20, amp:6, sd:5, col:'--v-resp' },
+];
+function attSeries(){
+  const r = rng(att.seed);
+  const tr = CH.map(c => Array.from({length:24}, (_, i) => c.base + c.amp * sig((i - 15) / 2.5) + Math.sin(i/2.7) * Math.abs(c.amp) * .12 + gauss(r) * Math.abs(c.amp) * .08));
+  const init = CH.map(c => Array.from({length:24}, () => gauss(r) * c.sd * 2.2));
+  const dpn = CH.map(c => Array.from({length:24}, () => gauss(r)));
+  return { tr, init, dpn };
+}
+let AS = attSeries();
+function recon(){
+  const k = att.iter, decay = Math.pow(0.925, k);
+  return CH.map((c, ci) => AS.tr[ci].map((v, i) => {
+    const dp = att.dp ? AS.dpn[ci][i] * c.sd * 3.4 / Math.sqrt(att.eps) * Math.min(1, k / 20) : 0;
+    return v + AS.init[ci][i] * decay + dp;
+  }));
+}
+function corr(a, b){ const n = a.length, ma = a.reduce((s,x)=>s+x,0)/n, mb = b.reduce((s,x)=>s+x,0)/n; let sab=0, sa=0, sb=0; for (let i=0;i<n;i++){ sab+=(a[i]-ma)*(b[i]-mb); sa+=(a[i]-ma)**2; sb+=(b[i]-mb)**2; } return sab / Math.sqrt(sa*sb || 1); }
+function renderAtt(){
+  const rc = recon(), W = 640, rowH = 136, L = 52, R = 14;
+  const ink = cssv('--ink'), line = cssv('--line'), alert = cssv('--alert');
+  let s = '';
+  CH.forEach((c, ci) => {
+    const y0 = ci * rowH + 8, h = rowH - 34;
+    const all = AS.tr[ci].concat(att.iter ? rc[ci] : []);
+    const lo = Math.min(...AS.tr[ci]) - Math.abs(c.amp) * 1.2, hi = Math.max(...AS.tr[ci]) + Math.abs(c.amp) * 1.2;
+    const X = i => L + (W - L - R) * i / 23, Y = v => y0 + 18 + h * (1 - (clamp(v, lo, hi) - lo) / (hi - lo));
+    s += `<text x="0" y="${y0+12}" font-size="13" font-weight="700" fill="${ink}">${c.name} <tspan fill="${cssv('--muted')}" font-weight="400">${c.unit}</tspan></text>`;
+    s += `<line x1="${L}" x2="${W-R}" y1="${y0+18+h}" y2="${y0+18+h}" stroke="${line}"/>`;
+    s += `<text x="${L-8}" y="${Y(hi)+10}" text-anchor="end" class="axl">${hi.toFixed(0)}</text><text x="${L-8}" y="${Y(lo)}" text-anchor="end" class="axl">${lo.toFixed(0)}</text>`;
+    s += `<polyline points="${AS.tr[ci].map((v,i)=>`${X(i)},${Y(v)}`).join(' ')}" fill="none" stroke="${ink}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    if (att.iter) s += `<polyline points="${rc[ci].map((v,i)=>`${X(i)},${Y(v)}`).join(' ')}" fill="none" stroke="${alert}" stroke-width="2.5" stroke-dasharray="6 4" stroke-linejoin="round"/>`;
+    if (ci === CH.length - 1) s += `<text x="${L}" y="${y0+rowH}" class="axl">24 h ago</text><text x="${W-R}" y="${y0+rowH}" text-anchor="end" class="axl">now</text>`;
+  });
+  $('#attSvg').innerHTML = s;
+  if (att.iter){
+    const m = CH.reduce((sum, c, ci) => sum + clamp(corr(AS.tr[ci], rc[ci]), 0, 1), 0) / CH.length;
+    $('#attMatch').textContent = Math.round(m * 100) + '% match';
+    $('#attMatch').style.color = m > .7 ? alert : cssv('--ok');
+    $('#attVerdict').textContent = att.iter < 60 ? 'Attack in progress…' : (m > .7 ? 'The attacker recovered this patient’s vitals from the update alone.' : 'The noise hides the patient. The reconstruction is meaningless.');
+  } else { $('#attMatch').textContent = '–'; $('#attMatch').style.color = ''; $('#attVerdict').textContent = 'Press “Run the attack”.'; }
+  $('#attIter').textContent = `Attack step ${att.iter} of 60`;
+}
+function runAttack(){ att.iter = 0; att.seed++; AS = attSeries(); att.running = true; $('#attRun').textContent = 'Running…'; }
+$('#attRun').addEventListener('click', runAttack);
+seg('#attSeg', v => { att.dp = v === 'on'; $('#attEps').disabled = !att.dp; $('#attEps').parentElement.style.opacity = att.dp ? 1 : .45; if (att.iter >= 60) renderAtt(); });
+$('#attEps').disabled = true; $('#attEps').parentElement.style.opacity = .45;
+$('#attEps').addEventListener('input', e => { att.eps = +e.target.value; $('#attEpsOut').textContent = att.eps; renderAtt(); });
+
+/* =====================================================================
+   3. BEDSIDE
+   ===================================================================== */
+const VIT = [
+  { k:'hr', n:'HR', u:'bpm', col:'--v-hr', dp:0, norm:80, sd:10 },
+  { k:'map', n:'MAP', u:'mmHg', col:'--v-map', dp:0, norm:82, sd:8 },
+  { k:'spo2', n:'SpO₂', u:'%', col:'--v-spo2', dp:0, norm:97, sd:1.5 },
+  { k:'resp', n:'Resp', u:'/min', col:'--v-resp', dp:0, norm:16, sd:3 },
+  { k:'temp', n:'Temp', u:'°C', col:'--v-temp', dp:1, norm:37, sd:.4 },
+];
+function makeDemoPatients(){
+  const H = 48;
+  const mk = (name, desc, onset, seed, f) => {
+    const r = rng(seed), p = { name, desc, onset, hr:[], map:[], resp:[], temp:[], spo2:[], risk_mean:[], risk_std:[] };
+    for (let h = 0; h < H; h++){ const v = f(h, r); for (const k in v) p[k].push(v[k]); }
+    return p;
+  };
+  const bump = (h, c, w) => Math.exp(-(((h - c) / w) ** 2));
+  return [
+    mk('Bed 4', 'Developed sepsis at hour 34', 34, 3, (h, r) => { const d = sig((h - 27) / 2.5);
+      return { hr:82 + 28*d + gauss(r)*3, map:84 - 22*d + gauss(r)*3, resp:16 + 9*d + gauss(r), temp:37.0 + 1.5*d + gauss(r)*.12, spo2:97 - 4*d + gauss(r)*.6,
+        risk_mean:clamp(0.06 + 0.86*sig((h - 26.2)/2.1) + gauss(r)*.02, 0, 1), risk_std:0.045 + 0.12*bump(h, 24.5, 2.6) + Math.abs(gauss(r))*.01 }; }),
+    mk('Bed 7', 'No sepsis. Agitated during suctioning at hour 15', null, 5, (h, r) => { const e = bump(h, 15, 1.3), e2 = bump(h, 37, 1.5);
+      return { hr:78 + 32*e + 12*e2 + gauss(r)*3, map:86 + 10*e + gauss(r)*3, resp:15 + 9*e + 4*e2 + gauss(r), temp:36.9 + gauss(r)*.12, spo2:97.5 - 4*e + gauss(r)*.5,
+        risk_mean:clamp(0.07 + 0.74*e + 0.42*e2 + gauss(r)*.02, 0, 1), risk_std:0.045 + 0.19*e + 0.12*e2 + Math.abs(gauss(r))*.01 }; }),
+    mk('Bed 12', 'No sepsis. Stable post-operative patient', null, 9, (h, r) => { const e = bump(h, 40, 1.4);
+      return { hr:74 + 6*Math.sin(h/5) + 14*e + gauss(r)*2.5, map:80 + 4*Math.sin(h/7) - 8*e + gauss(r)*3, resp:15 + 3*e + gauss(r), temp:36.8 + .5*e + gauss(r)*.12, spo2:97 + gauss(r)*.5,
+        risk_mean:clamp(0.12 + 0.05*Math.sin(h/4) + 0.56*e + gauss(r)*.02, 0, 1), risk_std:0.05 + 0.13*e + Math.abs(gauss(r))*.01 }; }),
+  ];
+}
+let PATIENTS = makeDemoPatients();
+const bed = { pi:0, t:0, playing:false, acc:0, thrR:.65, thrS:.12 };
+const ATTR_FEATS_DEFAULT = ['HR','MAP','SpO₂','Resp','Temp','Lactate','WBC'];
+
+function pat(){ return PATIENTS[bed.pi]; }
+function hours(){ return pat().risk_mean.length; }
+function renderPatList(){
+  $('#patList').innerHTML = PATIENTS.map((p, i) => `<button data-i="${i}" aria-pressed="${i === bed.pi}"><b>${esc(p.name)}</b><span>${esc(p.desc || (p.onset != null ? 'Developed sepsis at hour ' + p.onset : 'No sepsis'))}</span></button>`).join('');
+}
+$('#patList').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; bed.pi = +b.dataset.i; bed.t = 0; setBedPlaying(false); renderPatList(); setupScrub(); renderBed(); });
+function setupScrub(){ const s = $('#scrub'); s.max = hours() - 1; s.value = bed.t; }
+$('#scrub').addEventListener('input', e => { bed.t = +e.target.value; renderBed(); });
+function setBedPlaying(p){ bed.playing = p; $('#bedPlay').textContent = p ? 'Pause' : 'Play'; }
+function toggleBed(){ if (bed.t >= hours() - 1) bed.t = 0; setBedPlaying(!bed.playing); }
+$('#bedPlay').addEventListener('click', toggleBed);
+$('#bedRestart').addEventListener('click', () => { bed.t = 0; setBedPlaying(true); renderBed(); });
+$('#thrRisk').addEventListener('input', e => { bed.thrR = +e.target.value; $('#thrRiskOut').textContent = bed.thrR.toFixed(2); renderBed(); });
+$('#thrStd').addEventListener('input', e => { bed.thrS = +e.target.value; $('#thrStdOut').textContent = bed.thrS.toFixed(2); renderBed(); });
+
+function alarms(p, upto){
+  const thr = [], fg = [];
+  let a = false, b = false;
+  for (let h = 0; h <= upto; h++){
+    const m = p.risk_mean[h], sd = p.risk_std[h];
+    const ca = m > bed.thrR, cb = ca && sd < bed.thrS;
+    if (ca && !a) thr.push(h); if (cb && !b) fg.push(h);
+    a = ca; b = cb;
+  }
+  return { thr, fg };
+}
+const isFalse = (p, h) => p.onset == null || h < p.onset - 12;
+function attrMatrix(p){
+  if (p.attr && p.attr_features) return { feats:p.attr_features, rows:p.attr };
+  const feats = ATTR_FEATS_DEFAULT, rows = [];
+  for (let h = 0; h < p.risk_mean.length; h++){
+    const z = VIT.map(v => Math.abs((p[v.k][h] - v.norm) / v.sd));
+    const septic = p.onset != null ? sig((h - (p.onset - 8)) / 2.5) : 0;
+    rows.push([...z.map((x, i) => x * (i === 2 ? 1.4 : 1)), 0.4 + 2.6*septic, 0.3 + 1.6*septic]);
+  }
+  return { feats, rows };
+}
+function renderBed(){
+  const p = pat(), t = bed.t, H = hours();
+  $('#monName').textContent = p.name;
+  $('#monHour').textContent = `ICU hour ${t}`;
+  $('#scrub').value = t;
+  // vitals
+  $('#vitals').innerHTML = VIT.map(v => {
+    const col = cssv(v.col), arr = p[v.k] || [];
+    const lo0 = Math.max(0, t - 11), seg = arr.slice(lo0, t + 1);
+    const mn = Math.min(...seg), mx = Math.max(...seg), pad = (mx - mn) * .2 + v.sd * .8;
+    const pts = seg.map((x, i) => `${(i / 11 * 100).toFixed(1)},${(30 - (x - mn + pad) / (mx - mn + 2*pad) * 28).toFixed(1)}`).join(' ');
+    const val = arr[t] != null ? arr[t].toFixed(v.dp) : '--';
+    return `<div class="vital" style="color:${col}"><div class="nm"><span>${v.n}</span><span>${v.u}</span></div><div class="val">${val}</div>
+      <svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>`;
+  }).join('');
+  // banner
+  const m = p.risk_mean[t], sd = p.risk_std[t], bn = $('#banner');
+  if (m > bed.thrR && sd < bed.thrS){ bn.className = 'banner fire'; bn.innerHTML = `⚠ Sepsis alert <small>Risk ${m.toFixed(2)} ± ${sd.toFixed(2)}. Likely within 6 hours. Review the patient.</small>`; }
+  else if (m > bed.thrR){ bn.className = 'banner hold'; bn.innerHTML = `High risk, but the model is unsure <small>Risk ${m.toFixed(2)} ± ${sd.toFixed(2)}. Alert held back to avoid a false alarm.</small>`; }
+  else { bn.className = 'banner calm'; bn.innerHTML = `No alert <small>Risk ${m.toFixed(2)} ± ${sd.toFixed(2)}</small>`; }
+  // risk chart
+  const W = 760, Hh = 230, L = 40, R = 14, T = 14, B = 28;
+  const X = h => L + (W - L - R) * h / (H - 1), Y = v => T + (Hh - T - B) * (1 - v);
+  const ink = cssv('--ink'), line = cssv('--line'), muted = cssv('--muted'), accent = cssv('--accent'), alert = cssv('--alert');
+  let s = '';
+  [0, .25, .5, .75, 1].forEach(v => { s += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" class="axl">${v}</text>`; });
+  s += `<line x1="${L}" x2="${W-R}" y1="${Y(bed.thrR)}" y2="${Y(bed.thrR)}" stroke="${alert}" stroke-dasharray="6 5" stroke-width="1.5"/><text x="${W-R}" y="${Y(bed.thrR)-5}" text-anchor="end" font-size="11" fill="${alert}">alert threshold</text>`;
+  if (p.onset != null){ s += `<line x1="${X(p.onset)}" x2="${X(p.onset)}" y1="${T}" y2="${Hh-B}" stroke="${ink}" stroke-width="1.5" stroke-dasharray="2 4"/><text x="${X(p.onset)+5}" y="${T+10}" font-size="11" fill="${ink}">sepsis onset (hidden from model)</text>`;
+    s += `<rect x="${X(Math.max(0, p.onset-6))}" y="${T}" width="${X(p.onset)-X(Math.max(0,p.onset-6))}" height="${Hh-T-B}" fill="${accent}" opacity=".08"/>`; }
+  const up = p.risk_mean.slice(0, t + 1);
+  const band = up.map((v, h) => `${X(h)},${Y(clamp(v + p.risk_std[h], 0, 1))}`).concat(up.map((v, h) => `${X(h)},${Y(clamp(v - p.risk_std[h], 0, 1))}`).reverse()).join(' ');
+  s += `<polygon points="${band}" fill="${accent}" opacity=".22"/>`;
+  s += `<polyline points="${up.map((v,h)=>`${X(h)},${Y(v)}`).join(' ')}" fill="none" stroke="${accent}" stroke-width="3" stroke-linejoin="round"/>`;
+  const al = alarms(p, t);
+  al.thr.forEach(h => { s += `<path d="M${X(h)} ${Hh-B-2} l-6 10 h12 z" fill="${muted}"/>`; });
+  al.fg.forEach(h => { s += `<circle cx="${X(h)}" cy="${Y(p.risk_mean[h])}" r="7" fill="${alert}" stroke="${cssv('--panel')}" stroke-width="2"/>`; });
+  s += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${Hh-B}" stroke="${ink}" stroke-width="1" opacity=".35"/>`;
+  s += `<text x="${L}" y="${Hh-6}" class="axl">hour 0</text><text x="${W-R}" y="${Hh-6}" text-anchor="end" class="axl">hour ${H-1}</text>`;
+  $('#riskSvg').innerHTML = s;
+  // tally
+  const fT = al.thr.filter(h => isFalse(p, h)).length, fF = al.fg.filter(h => isFalse(p, h)).length;
+  $('#tThr').textContent = al.thr.length; $('#tFg').textContent = al.fg.length;
+  $('#tThrF').textContent = `${fT} false`; 
+  const early = p.onset != null ? al.fg.filter(h => !isFalse(p, h)) : [];
+  $('#tFgF').textContent = `${fF} false` + (early.length ? ` · ${p.onset - early[0]} h before onset` : '');
+  // heatmap
+  const A = attrMatrix(p), feats = A.feats, cols = 12;
+  const hw = 360, hh = 200, lx = 62, top = 6, cw = (hw - lx - 4) / cols, rh = (hh - top - 22) / feats.length;
+  let mx = 0; for (let h = Math.max(0, t - 11); h <= t; h++) A.rows[h].forEach(v => mx = Math.max(mx, Math.abs(v)));
+  let hs = '';
+  feats.forEach((f, fi) => {
+    hs += `<text x="${lx-8}" y="${top + fi*rh + rh/2 + 4}" text-anchor="end" font-size="12" fill="${ink}">${esc(f)}</text>`;
+    for (let c = 0; c < cols; c++){
+      const h = t - (cols - 1 - c);
+      const v = h >= 0 ? Math.abs(A.rows[h][fi]) / (mx || 1) : 0;
+      hs += `<rect x="${lx + c*cw + 1}" y="${top + fi*rh + 1}" width="${cw - 2}" height="${rh - 2}" rx="3" fill="${h >= 0 ? alert : line}" opacity="${h >= 0 ? (0.06 + v*0.9).toFixed(2) : .3}"/>`;
+    }
+  });
+  hs += `<text x="${lx}" y="${hh-4}" class="axl">12 h ago</text><text x="${hw-4}" y="${hh-4}" text-anchor="end" class="axl">now</text>`;
+  $('#heatSvg').innerHTML = hs;
+}
+
+/* =====================================================================
+   4. RESULTS
+   ===================================================================== */
+let RES = {
+  methods: [
+    { name:'Local-only', auroc:.72, auprc:.070 },
+    { name:'FedAvg', auroc:.82, auprc:.110 },
+    { name:'FedProx', auroc:.83, auprc:.115 },
+    { name:'FedAvg + DP', auroc:.79, auprc:.095 },
+    { name:'FedGuard', auroc:.81, auprc:.105 },
+    { name:'Centralized', auroc:.86, auprc:.140 },
+  ],
+  prevalence: .02,
+  privacy: { eps:[1,2,3,5,8], uniform:[.73,.76,.79,.80,.81], adaptive:[.75,.78,.805,.815,.82], no_dp:.82 },
+  alerts: { threshold_only:{ false_per_100h:4.1, sensitivity:.80 }, fedguard:{ false_per_100h:3.2, sensitivity:.79 } },
+};
+function barChart(el, key, yMin, yMax, fmt, refLine){
+  const W = 520, H = 300, L = 44, R = 8, T = 14, B = 54;
+  const ms = RES.methods, n = ms.length, bw = (W - L - R) / n;
+  const Y = v => T + (H - T - B) * (1 - (v - yMin) / (yMax - yMin));
+  const line = cssv('--line'), ink = cssv('--ink'), muted = cssv('--muted'), accent = cssv('--accent'), alert = cssv('--alert'), ok = cssv('--ok');
+  let s = '';
+  for (let k = 0; k <= 5; k++){ const v = yMin + (yMax - yMin) * k / 5; s += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" class="axl">${fmt(v)}</text>`; }
+  ms.forEach((m, i) => {
+    const v = m[key]; if (v == null) return;
+    const isFG = /fedguard/i.test(m.name), col = isFG ? accent : /central/i.test(m.name) ? ok : /local/i.test(m.name) ? alert : muted;
+    const x = L + i * bw + bw * .18, w = bw * .64, y = Y(Math.max(v, yMin));
+    s += `<rect x="${x}" y="${y}" width="${w}" height="${Y(yMin) - y}" rx="6" fill="${col}" opacity="${isFG ? 1 : .75}"/>`;
+    s += `<text x="${x + w/2}" y="${y - 6}" text-anchor="middle" font-size="13" font-weight="700" fill="${ink}">${fmt(v)}</text>`;
+    s += `<text x="${x + w/2}" y="${H - B + 18}" text-anchor="middle" font-size="12" fill="${isFG ? accent : ink}" font-weight="${isFG ? 700 : 400}">${esc(m.name.length > 13 ? m.name.slice(0,12)+'…' : m.name)}</text>`;
+  });
+  if (refLine != null){ s += `<line x1="${L}" x2="${W-R}" y1="${Y(refLine)}" y2="${Y(refLine)}" stroke="${ink}" stroke-dasharray="4 4"/><text x="${L+4}" y="${Y(refLine)+14}" font-size="11" fill="${ink}">random guessing (prevalence ${refLine})</text>`; }
+  $(el).innerHTML = s;
+}
+function privChart(){
+  const P = RES.privacy; const W = 520, H = 300, L = 44, R = 14, T = 16, B = 40;
+  const e = P.eps, xs = e.map(v => Math.log(v)), xmin = Math.min(...xs), xmax = Math.max(...xs);
+  const vals = [...(P.uniform||[]), ...(P.adaptive||[]), P.no_dp || 0].filter(v => v), yMin = Math.floor((Math.min(...vals) - .02) * 50) / 50, yMax = Math.ceil((Math.max(...vals) + .02) * 50) / 50;
+  const X = v => L + (W - L - R) * (Math.log(v) - xmin) / ((xmax - xmin) || 1), Y = v => T + (H - T - B) * (1 - (v - yMin) / (yMax - yMin));
+  const line = cssv('--line'), ink = cssv('--ink'), muted = cssv('--muted'), accent = cssv('--accent'), ok = cssv('--ok');
+  let s = '';
+  for (let k = 0; k <= 4; k++){ const v = yMin + (yMax - yMin) * k / 4; s += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" class="axl">${v.toFixed(2)}</text>`; }
+  e.forEach(v => s += `<text x="${X(v)}" y="${H-B+18}" text-anchor="middle" class="axl">ε=${v}</text>`);
+  s += `<text x="${L}" y="${H-4}" class="axl">← stronger privacy</text><text x="${W-R}" y="${H-4}" text-anchor="end" class="axl">weaker privacy →</text>`;
+  if (P.no_dp){ s += `<line x1="${L}" x2="${W-R}" y1="${Y(P.no_dp)}" y2="${Y(P.no_dp)}" stroke="${ok}" stroke-dasharray="5 4"/><text x="${L+4}" y="${Y(P.no_dp)-5}" font-size="11" fill="${ok}">no privacy (leaks data)</text>`; }
+  const lineOf = (arr, col, lab, bold) => { if (!arr) return ''; const pts = arr.map((v,i) => `${X(e[i])},${Y(v)}`).join(' '); return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${bold?3.5:2.5}" stroke-linejoin="round"/>` + arr.map((v,i) => `<circle cx="${X(e[i])}" cy="${Y(v)}" r="${bold?5:4}" fill="${col}"/>`).join('') + `<text x="${X(e[e.length-1]) - 4}" y="${Y(arr[arr.length-1]) + (bold ? -10 : 18)}" text-anchor="end" font-size="12" font-weight="700" fill="${col}">${lab}</text>`; };
+  s += lineOf(P.uniform, muted, 'Same ε for all', false);
+  s += lineOf(P.adaptive, accent, 'FedGuard adaptive ε', true);
+  $('#resPriv').innerHTML = s;
+}
+function renderRes(){
+  barChart('#resAuroc', 'auroc', .5, 1, v => v.toFixed(2));
+  const mx = Math.max(...RES.methods.map(m => m.auprc || 0), RES.prevalence || 0);
+  barChart('#resAuprc', 'auprc', 0, Math.ceil(mx * 1.25 * 20) / 20, v => v.toFixed(3).replace(/0$/, ''), RES.prevalence);
+  privChart();
+  const a = RES.alerts, t = a.threshold_only, f = a.fedguard;
+  const red = t.false_per_100h ? Math.round((1 - f.false_per_100h / t.false_per_100h) * 100) : 0;
+  $('#resAlerts').innerHTML = `
+    <div class="box"><div class="note">Threshold only</div><div class="v">${t.false_per_100h}</div><div class="note">false alarms per 100 patient-hours</div><p class="note" style="margin:8px 0 0">Catches ${(t.sensitivity*100).toFixed(0)}% of sepsis cases</p></div>
+    <div class="box fg"><div class="note">FedGuard (uncertainty-gated)</div><div class="v" style="color:var(--accent)">${f.false_per_100h}</div><div class="note">false alarms per 100 patient-hours</div><p class="note" style="margin:8px 0 0">Catches ${(f.sensitivity*100).toFixed(0)}% of sepsis cases</p></div>
+    <p style="grid-column:1/-1;margin:4px 0 0"><b>${red}% fewer false alarms</b> <span class="muted">for a ${((t.sensitivity - f.sensitivity)*100).toFixed(1)} point change in sensitivity.</span></p>`;
+}
+
+/* ---------------- load results.json ---------------- */
+$('#fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const chip = $('#dataChip');
+  try {
+    const j = JSON.parse(await f.text());
+    let used = [];
+    if (Array.isArray(j.methods) && j.methods.length){ RES.methods = j.methods; used.push('methods'); }
+    if (typeof j.prevalence === 'number') RES.prevalence = j.prevalence;
+    if (j.privacy && Array.isArray(j.privacy.eps)){ RES.privacy = j.privacy; used.push('privacy'); }
+    if (j.alerts && j.alerts.threshold_only && j.alerts.fedguard){ RES.alerts = j.alerts; used.push('alerts'); }
+    if (Array.isArray(j.patients) && j.patients.length){
+      const ok = j.patients.every(p => Array.isArray(p.risk_mean) && Array.isArray(p.risk_std) && p.risk_mean.length === p.risk_std.length && VIT.every(v => Array.isArray(p[v.k]) && p[v.k].length === p.risk_mean.length));
+      if (!ok) throw new Error('Each patient needs hr, map, spo2, resp, temp, risk_mean and risk_std arrays of equal length.');
+      PATIENTS = j.patients.map(p => ({ ...p, onset: p.onset_hour ?? p.onset ?? null, desc: p.desc || (p.onset_hour != null ? 'Developed sepsis at hour ' + p.onset_hour : 'No sepsis') }));
+      bed.pi = 0; bed.t = 0; setBedPlaying(false); renderPatList(); setupScrub();
+      $('#bedNote').textContent = 'Replaying test-set patients from your results file.';
+      used.push('patients');
+    }
+    if (!used.length) throw new Error('No recognised keys. Expected methods, privacy, alerts or patients.');
+    chip.className = 'chip real'; chip.textContent = 'Your results'; chip.title = 'Loaded: ' + used.join(', ');
+    renderAll();
+  } catch (err){
+    chip.className = 'chip err'; chip.textContent = 'File not loaded'; chip.title = err.message;
+    alert('Could not load results: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+/* ---------------- main loop ---------------- */
+function renderAll(){
+  if (currentView === 'fed') renderFed();
+  if (currentView === 'att') renderAtt();
+  if (currentView === 'bed') renderBed();
+  if (currentView === 'res') renderRes();
+}
+let last = performance.now();
+function loop(now){
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (fed.running){ stepFed(dt * 1.6); if (currentView === 'fed') renderFed(); }
+  if (att.running){ att.acc = (att.acc || 0) + dt; if (att.acc > 0.05){ att.acc = 0; att.iter++; if (currentView === 'att') renderAtt(); if (att.iter >= 60){ att.running = false; $('#attRun').textContent = 'Run the attack again'; renderAtt(); } } }
+  if (bed.playing){ bed.acc += dt; if (bed.acc > 0.42){ bed.acc = 0; bed.t++; if (bed.t >= hours() - 1){ bed.t = hours() - 1; setBedPlaying(false); } if (currentView === 'bed') renderBed(); } }
+  requestAnimationFrame(loop);
+}
+resetFed(); renderPatList(); setupScrub(); renderAll();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Main experiment: centralized PatchTST (upper bound), 3 seeds.
+defaults: [data, model/patchtst, train/centralized, privacy/none]
+experiment: centralized
+seeds: [0, 1, 2]

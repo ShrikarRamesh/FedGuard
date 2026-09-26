@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fedguard"
+version = "0.1.0"
+description = "Privacy-preserving federated learning for real-time ICU sepsis early warning"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+authors = [
+    { name = "Shrikar Ramesh" },
+    { name = "Suhruth R Bharadwaj" },
+    { name = "Tejas Amarnath" },
+    { name = "Triambak TS" },
+]
+# Pinned after confirming they install together (Python 3.11, Windows + CUDA 13.1 driver).
+# torch: install the CUDA build first, see README (`--index-url https://download.pytorch.org/whl/cu130`).
+dependencies = [
+    "torch==2.14.0",
+    "opacus==1.6.0",
+    "flwr==1.38.0",
+    "captum==0.9.0",
+    "lightgbm==4.7.0",
+    "scikit-learn==1.9.1",
+    "scipy==1.17.1",
+    "numpy==2.4.6",
+    "pandas==3.0.6",
+    "pyarrow==25.0.1",
+    "typer==0.20.1",
+    "omegaconf==2.3.1",
+    "pydantic==2.13.5",
+    "pyyaml==6.0.3",
+    "matplotlib==3.11.2",
+    "plotly==7.1.0",
+    "streamlit==1.64.0",
+    "requests==2.34.2",
+    "tqdm==4.70.1",
+    "jsonschema==4.26.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pytest-timeout==2.4.0", "ruff==0.16.9", "black==26.5.1"]
+wandb = ["wandb"]
+
+[project.scripts]
+fedguard = "fedguard.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fedguard = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 120
+markers = [
+    "slow: longer tests excluded from `make test` (run with -m slow)",
+    "gpu: needs CUDA",
+]
+addopts = "-m 'not slow'"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests", "app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE", "E722"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 110
+target-version = ["py311"]
+workers = 1   # black's process pool hangs on this Windows machine
