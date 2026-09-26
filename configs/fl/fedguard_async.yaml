@@ -3,7 +3,7 @@
 defaults: [fl/fedavg]
 algorithm: fedguard_async
 mode: async
-alpha0: 1.0              # tuned on validation (docs/decisions.md)
+alpha0: 4.0              # selected on validation AUPRC from {0.5, 1, 2, 4} (D20); alpha = min(1, alpha0 n_i/N s(tau))
 staleness_fn: exp        # exp: s = exp(-lambda * tau) | poly: s = (1 + tau)^(-a)  (FedAsync) | const
 staleness_lambda: 0.35
 staleness_poly_a: 0.5

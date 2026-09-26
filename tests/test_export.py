@@ -57,10 +57,14 @@ def test_invalid_results_rejected(mutate):
 
 
 def test_exported_file_if_present_is_valid():
-    """If the pipeline has produced results/results.json, it must satisfy the contract."""
+    """If the pipeline has produced results.json (real, or the --fast one during `make smoke`), it must satisfy
+    the contract."""
+    import os
+
     from fedguard.utils.io import repo_root
 
-    p = repo_root() / "results" / "results.json"
+    root = os.environ.get("FEDGUARD_SMOKE_RESULTS_DIR") or str(repo_root() / "results")
+    p = Path(root) / "results.json"
     if not p.exists():
         pytest.skip("results/results.json not produced yet (run `fedguard export`)")
     validate(json.loads(p.read_text(encoding="utf-8")))

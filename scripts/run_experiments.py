@@ -24,10 +24,9 @@ NODES_4 = ["A_MICU", "A_SICU", "B_MICU", "B_SICU"]
 
 def jobs_tune() -> list[list[str]]:
     base = ["fl", "run", "-c", "experiments/fedguard_async_nodp", "--seed", "0", "--name", "tune_async"]
-    out = [base + ["-o", f"fl.alpha0={a}", "-o", "fl.staleness_lambda=0.35"] for a in (0.5, 1.0, 2.0)]
-    # stage 2 (lambda) uses the alpha0 chosen from stage 1 and written into configs/fl/fedguard_async.yaml
-    out += [base + ["-o", f"fl.staleness_lambda={lam}"] for lam in (0.1, 1.0)]
-    return out
+    # lambda in {0.1, 1.0} at the chosen alpha0 is run in the ablation stage (D20)
+    # 4.0 added after 2.0 beat 0.5 at the edge of the original grid (D20)
+    return [base + ["-o", f"fl.alpha0={a}", "-o", "fl.staleness_lambda=0.35"] for a in (0.5, 1.0, 2.0, 4.0)]
 
 
 def jobs_tune_dp() -> list[list[str]]:
@@ -35,8 +34,25 @@ def jobs_tune_dp() -> list[list[str]]:
     FedAvg + uniform DP at eps = 3, seed 0 (D24). Same model and rounds as every other run."""
     base = ["fl", "run", "-c", "experiments/fedavg_dp", "--seed", "0", "--name", "tune_dp", "-o", "privacy.physical_batch_size=256"]
     grid = [(1024, 5, 5e-4), (1024, 2, 1e-3), (2048, 2, 1e-3), (1024, 5, 2e-3)]
-    return [base + ["-o", f"privacy.logical_batch_size={b}", "-o", f"privacy.local_epochs={e}", "-o", f"privacy.lr={lr}"]
+    jobs = [base + ["-o", f"privacy.logical_batch_size={b}", "-o", f"privacy.local_epochs={e}", "-o", f"privacy.lr={lr}"]
             for b, e, lr in grid]  # fmt: skip
+    # k windows per sampled patient, per-patient clipping (D25)
+    for b, e, lr, k in [(512, 2, 1e-3, 8), (1024, 2, 1e-3, 4)]:
+        jobs.append(base + ["-o", f"privacy.logical_batch_size={b}", "-o", f"privacy.local_epochs={e}",
+                            "-o", f"privacy.lr={lr}", "-o", f"privacy.windows_per_patient={k}"])  # fmt: skip
+    return jobs
+
+
+SMALL_MODEL = ["-o", "model.d_model=64", "-o", "model.n_layers=2", "-o", "model.n_heads=4", "-o", "model.d_ff=128",
+               "-o", "model.head_hidden=32"]  # fmt: skip
+
+
+def jobs_tune_dp_small() -> list[list[str]]:
+    """One time-boxed run (D27): same patient-level DP (FedAvg + uniform, eps = 3, seed 0, the better of the plain
+    DP settings), smaller PatchTST (d_model 64, 2 layers) to cut the noise dimension."""
+    return [["fl", "run", "-c", "experiments/fedavg_dp", "--seed", "0", "--name", "tune_dp_small",
+             "-o", "privacy.physical_batch_size=256", "-o", "privacy.logical_batch_size=1024",
+             "-o", "privacy.local_epochs=5", "-o", "privacy.lr=0.0005", *SMALL_MODEL]]  # fmt: skip
 
 
 def jobs_main() -> list[list[str]]:
@@ -95,6 +111,10 @@ def jobs_ablations() -> list[list[str]]:
     for rule in ("inverse", "equal_noise"):
         j.append(["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", f"abl_rule_{rule}",
                   "-o", f"privacy.budget_rule={rule}", "-o", "eval.mc_dropout=false"])  # fmt: skip
+    # staleness decay lambda (alpha0 from configs/fl/fedguard_async.yaml), async without DP
+    for lam in (0.1, 1.0):
+        j.append(["fl", "run", "-c", "experiments/fedguard_async_nodp", "--seed", "0", "--name", "tune_async",
+                  "-o", f"fl.staleness_lambda={lam}"])  # fmt: skip
     # lookback L in {12, 48} (24 is main), centralized PatchTST
     for L in (12, 48):
         j.append(["train", "centralized", "--seed", "0", "--name", f"abl_lookback{L}", "-o", f"data.lookback={L}",
@@ -102,10 +122,36 @@ def jobs_ablations() -> list[list[str]]:
     return j
 
 
-STAGES = {"tune": jobs_tune, "tune_dp": jobs_tune_dp, "main": jobs_main, "sweep": jobs_sweep, "baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
-def run_job(args: list[str], fast: bool, log_dir: Path) -> tuple[list[str], int, float]:
+JOB_TIMEOUT_S = 4 * 3600  # longest legitimate job (~1 h under contention) x 4
+GPU_COMMANDS = {"train", "fl", "attack", "mc-ablation", "explain", "alerts"}
+
+
+def running_gpu_jobs() -> int:
+    """Number of FedGuard training/eval jobs running on this machine (any queue). A job may appear as a launcher +
+    child process pair (venv shim on Windows); only processes whose parent is not itself a job are counted."""
+    import psutil
+
+    jobs = {}
+    for p in psutil.process_iter(["pid", "ppid", "cmdline"]):
+        cmd = p.info.get("cmdline") or []
+        if "fedguard.cli" in cmd:
+            i = cmd.index("fedguard.cli")
+            if i + 1 < len(cmd) and cmd[i + 1] in GPU_COMMANDS:
+                jobs[p.info["pid"]] = p.info["ppid"]
+    return sum(1 for pid, ppid in jobs.items() if ppid not in jobs)
+
+
+def wait_for_slot(max_jobs: int, poll_s: float = 30.0) -> None:
+    while running_gpu_jobs() >= max_jobs:
+        time.sleep(poll_s)
+
+
+def run_job(args: list[str], fast: bool, log_dir: Path, max_jobs: int = 3) -> tuple[list[str], int, float]:
+    if not fast:
+        wait_for_slot(max_jobs)
     cmd = [sys.executable, "-m", "fedguard.cli", *args, *(["--fast"] if fast else [])]
     name = "_".join(a.replace("/", "-").replace("=", "-")[:24] for a in args if not a.startswith("-"))[:120]
     log = log_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{name}.log"
@@ -113,7 +159,11 @@ def run_job(args: list[str], fast: bool, log_dir: Path) -> tuple[list[str], int,
     with log.open("w", encoding="utf-8") as f:
         f.write(" ".join(cmd) + "\n")
         f.flush()
-        rc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT).returncode
+        try:  # a job that hangs (e.g. after a CUDA OOM in another process) must not hold a GPU slot forever
+            rc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=JOB_TIMEOUT_S).returncode
+        except subprocess.TimeoutExpired:
+            f.write(f"\nTIMEOUT after {JOB_TIMEOUT_S} s\n")
+            rc = 124
     return args, rc, time.time() - t0
 
 
@@ -123,6 +173,7 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--fast", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--max-gpu-jobs", type=int, default=3, help="machine-wide cap on concurrent GPU jobs (6 GB card)")
     ap.add_argument("--match", action="append", default=[], help="keep jobs whose command contains this text")
     ap.add_argument("--exclude", action="append", default=[], help="drop jobs whose command contains this text")
     a = ap.parse_args()
@@ -146,7 +197,10 @@ def main() -> None:
         return
     failed = []
     with ThreadPoolExecutor(max_workers=a.workers) as ex:
-        futs = [ex.submit(run_job, j, a.fast, log_dir) for j in jobs]
+        futs = []
+        for j in jobs:  # stagger submissions so parallel workers see each other's processes when checking slots
+            futs.append(ex.submit(run_job, j, a.fast, log_dir, a.max_gpu_jobs))
+            time.sleep(5 if a.workers > 1 and not a.fast else 0)
         for fut in as_completed(futs):
             args, rc, dt = fut.result()
             status = "ok" if rc == 0 else f"FAILED ({rc})"

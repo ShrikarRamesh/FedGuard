@@ -46,6 +46,21 @@ def _write_artifacts(root: Path) -> None:
     (root / "tables" / "main.md").write_text("| method | auroc |\n|---|---|\n| x | 0.5 |\n")
 
 
+@pytest.mark.parametrize("page", PAGES, ids=lambda p: p.name)
+def test_pages_on_pipeline_artifacts(page, monkeypatch):
+    """Used by `make smoke`: render every page on the artefacts the --fast pipeline just produced."""
+    import os
+
+    res, runs = os.environ.get("FEDGUARD_SMOKE_RESULTS_DIR"), os.environ.get("FEDGUARD_SMOKE_RUNS_DIR")
+    if not res:
+        pytest.skip("only in `make smoke` (FEDGUARD_SMOKE_RESULTS_DIR unset)")
+    monkeypatch.setenv("FEDGUARD_RESULTS_DIR", res)
+    if runs:
+        monkeypatch.setenv("FEDGUARD_RUNS_DIR", runs)
+    at = AppTest.from_file(str(page), default_timeout=120).run()
+    assert not at.exception, [e.value for e in at.exception]
+
+
 def test_train_together_replays_events(tmp_path, monkeypatch):
     """Page 1 renders a recorded run (events.jsonl in the engine's format)."""
     run = tmp_path / "runs" / "fedguard" / "20260101-000000_0"

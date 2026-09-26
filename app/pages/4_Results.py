@@ -72,6 +72,10 @@ with c3:
     st.plotly_chart(fig, width="stretch")
 with c4:
     st.markdown("**False alarms (test set, validation-tuned thresholds)**")
+    if full.get("alerts_source_label"):
+        st.caption(
+            f"Model: {full['alerts_source_label']} (mean over seeds with alerts). DP models at eps = 3 cannot alert usefully (D29/D30)."
+        )
     a = res["alerts"]
     t, g = a["threshold_only"], a["fedguard"]
     if t["false_per_100h"] is None:

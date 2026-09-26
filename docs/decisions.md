@@ -117,7 +117,7 @@ Adam only sees noisy clipped gradients, so this is post-processing and changes n
 
 ## D20. Async mixing parameters chosen on validation (Adopted)
 
-α₀ ∈ {0.5, 1, 2} at λ = 0.35, then λ ∈ {0.1, 1.0} at the best α₀. Selection uses the best global **validation** AUPRC of async FL without DP (seed 0). The chosen values are written into `configs/fl/fedguard_async.yaml`; the results are in PROGRESS.md and `results/tables/async_tuning.md`. Experiment queues run as parallel processes (up to 3 on the GPU). The simulated clock makes results independent of real-time contention.
+α₀ ∈ {0.5, 1, 2} at λ = 0.35, selected on the best global **validation** AUPRC of async FL without DP (seed 0). One tuning run takes about 58 min under GPU contention, so λ is kept at 0.35 for the main runs. Measured so far (best val AUPRC / test AUROC): α₀ = 0.5 → 0.0620 / 0.742; α₀ = 2.0 → 0.0703 / 0.759. The best value was at the edge of the grid, so α₀ = 4.0 was added: 0.0800 / 0.766. **Chosen: α₀ = 4.0.** The grid cannot usefully extend further: α = min(1, α₀ · n_i/N · s(τ)) with n_i/N ≈ 0.2–0.3 is already about 0.8–1.0 at α₀ = 4, so larger α₀ only saturates at full replacement. The improvement is monotonic in α₀, so the α₀ = 1.0 run (rerun after a GPU out-of-memory failure) cannot change the choice; it is reported for completeness. Its result, 0.0669 / 0.754, confirms the monotonic trend (0.5 < 1 < 2 < 4). Interpretation: in this setting the newest client model should largely replace the global model, with staleness down-weighting as the only brake. The λ ∈ {0.1, 1.0} runs move to the ablation stage and are reported there (they were planned as a second tuning stage). The chosen values are written into `configs/fl/fedguard_async.yaml`; the results are in PROGRESS.md and `results/tables/async_tuning.md`. Experiment queues run as parallel processes (up to 3 on the GPU). The simulated clock makes results independent of real-time contention.
 
 ## D21. Ablations use one seed (Adopted)
 
@@ -158,6 +158,85 @@ The first FedAvg + DP run (ε = 3, logical batch 256, 5 patient-epochs per round
 - **Grid:** logical batch {1024, 2048} (physical 256 via BatchMemoryManager) × patient-epochs per round {2, 5} × lr {5e-4, 1e-3, 2e-3}, using 4 of the combinations.
 - **Selection:** FedAvg + uniform DP at ε = 3, seed 0, on best validation AUPRC. The model and rounds are unchanged.
 - **Caveat:** this selection is not included in ε (docs/privacy.md). The chosen setting is used for every DP run.
+
+## D25. k windows per sampled patient (implemented; selected on validation if it helps)
+
+One random window per sampled patient (D2) discards most of each patient's ~38 windows of signal per step.
+- **Mechanism:** `privacy/dp.py` computes each sampled patient's gradient of its mean loss over k windows, drawn uniformly with replacement from the patient's own stay. It uses `torch.func` (vmap over patients; dropout masks independent per patient), clips that per-patient vector to C, sums, and adds N(0, σ²C²) noise.
+- **Guarantee:** each patient still contributes one clipped vector per step, so Opacus' `RDPAccountant` (stepped with (σ, q) every step) bounds the privacy loss exactly as before. The guarantee is identical to D2.
+- **Verified:**
+  - for k = 1 the per-patient clipped sum equals Opacus' per-sample clipped sum on the same batch;
+  - for k > 1 a patient's gradient equals the average over its windows;
+  - the accountant takes exactly the planned number of steps.
+- **Use:** Opacus remains the implementation for k = 1. k ∈ {4, 8} enters the D24 validation selection.
+
+## D26. Clipping norm C = 1 is not tuned: measured gradient norms show it is not the bottleneck (Adopted)
+
+Per-sample gradient norms of the DP loss, measured on 512 random + 256 positive A_MICU training windows (dropout off):
+- **Untrained model:** median 3.0 (random windows), 29 (positive); 100% are clipped at C = 1.
+- **Trained FedAvg + DP (ε = 3):** median 0.006 for random (mostly negative) windows, of which only 3% are clipped; 149 for positive windows, 100% clipped. Per-patient norms with k = 8 have median 0.007.
+
+The DP model has collapsed toward "always low risk". The rare positive windows (~1.6% of samples) carry the useful signal, and they are clipped to C in any case.
+- **Why C doesn't help:** noise is σC and AdamW is scale-invariant, so changing C does not change positives' signal relative to the noise. A much smaller C would only raise the relative weight of the uninformative negatives.
+- **The binding constraint** is signal versus noise dimension: about 0.6M parameters with ~4k patients per client and 1.6% positives. Required noise multipliers for the smallest client (δ = 1e-5, R_max = 40):
+  - batch 1024, 2 epochs/round: σ = 18.3 / 9.7 / 6.8 / 4.4 / 3.0 at ε = 1 / 2 / 3 / 5 / 8;
+  - batch 512, 2 epochs/round: σ = 13.0 / 6.9 / 4.8 / 3.2 / 2.2 at the same ε.
+- **Implication:** ε = 8 improves the noise-to-signal ratio about 2.3× over ε = 3. That is still noise-dominated for the positive class, so only partial recovery is expected.
+- **Decision:** no further batch/epoch/lr/C variations. The ~0.63 AUROC at ε = 3 is reported as a real privacy–utility cost, and the ε sweep (1–8, 3 seeds, plus the like-for-like no-DP reference) is the headline privacy result.
+- **Not pursued (listed as future work):** a smaller model for DP, and oversampling positive hours within a septic patient's own stay (DP-valid, but it changes calibration).
+
+## D27. One time-boxed smaller-model DP run (Adopted by the team, 2026-09-26)
+
+Fewer parameters is the standard remedy for DP noise: the noise norm grows with √d, while the clipped signal does not.
+- **Run:** a single configuration (`tune_dp_small`): PatchTST with d_model 64, 2 layers, 4 heads, d_ff 128, head 32, **97,409 parameters versus 594,945** (6.1× fewer, about 2.5× smaller noise norm).
+- **Held fixed:** the same patient-level DP (FedAvg + uniform, ε = 3, δ = 1e-5, seed 0, batch 1024 / 5 patient-epochs / lr 5e-4, C = 1, R_max = 40).
+- **Decision rule, set before the run:**
+  - If it clearly beats the ~0.63 test AUROC of the full-size DP runs, the ε sweep and all DP methods use the small model. The model-size change is reported explicitly: the DP arms then differ in architecture from the non-DP arms, and the like-for-like no-DP reference uses the small model too.
+  - Otherwise the plan stays as in D26, and this run is cited as tried.
+- **Operational:** at most 3 concurrent GPU jobs. `scripts/run_experiments.py --max-gpu-jobs` (default 3) counts FedGuard jobs machine-wide before starting a new one. This follows one CUDA out-of-memory failure (async α₀ = 1.0, rerun) while four jobs shared the 6 GB GPU.
+
+## D28. DP selection closed: standard Opacus DP-SGD, batch 1024, 5 patient-epochs/round, lr 5e-4 (Adopted)
+
+All runs are FedAvg + uniform patient-level DP, ε = 3, δ = 1e-5, seed 0. "Val AUPRC" is the selection metric.
+
+| Configuration | Val AUPRC | Test AUROC (95% CI) | Test AUPRC |
+|---|---|---|---|
+| batch 256, 5 epochs, lr 5e-4 (initial) | 0.0252 | 0.628 | 0.024 |
+| **batch 1024, 5 epochs, lr 5e-4 (chosen)** | **0.0263** | **0.636 (0.603–0.667)** | 0.028 |
+| batch 1024, 2 epochs, lr 1e-3 | 0.0261 | 0.635 (0.603–0.666) | 0.027 |
+| k = 8 windows/patient, batch 512, 2 epochs, lr 1e-3 (D25) | 0.0279 | 0.644 (0.618–0.673) | 0.026 |
+| k = 4 windows/patient, batch 1024, 2 epochs, lr 1e-3 (D25) | 0.0244 | 0.621 (0.591–0.652) | 0.026 |
+| small PatchTST, 97k params, batch 1024, 5 epochs, lr 5e-4 (D27) | 0.0158 | 0.512 (0.479–0.546) | 0.017 |
+
+Test prevalence is 0.0166. A batch-2048 configuration and an lr 2e-3 configuration were stopped unrun to keep at most 3 GPU jobs (D27).
+
+- **Result:** every full-size configuration lands at 0.62–0.64 test AUROC with overlapping CIs.
+- **k-window DP (D25) is not adopted.** k = 8 has the nominally best validation AUPRC, but k = 4 is worse than plain DP, so the mechanism does not clearly help, and k = 8 costs 2× the compute.
+- **Small model (D27) collapsed.** Validation AUROC stayed at about 0.49 from round 5, and training loss rose (A_MICU 0.94 → 3.00) under noise multipliers of 9.5–10.6. It is cited as tried, not adopted, and was not investigated further (time-boxed).
+- **Chosen:** the best standard (k = 1, Opacus) configuration by validation AUPRC.
+- **Consequence:** ~0.63 test AUROC at ε = 3 is reported as a genuine privacy–utility cost. The ε sweep (1–8, 3 seeds, like-for-like no-DP reference) is the headline privacy result.
+
+## D29. Alert threshold grid includes the model's own validation-risk quantiles (Adopted; bug fix)
+
+The first alert evaluation of FedGuard (DP, ε = 3) reported zero alarms for all seeds. The fixed τ_r grid started at 0.05, but the DP models' validation risks never exceed 0.0054 (median 0.0023): they predict near the 1.7% base rate, with ECE 0.016. The τ_r grid is now the fixed grid ∪ the 50th–99.9th percentiles of the model's own **validation** mean risk, so it is still validation-only. The test `test_threshold_grid_adapts_to_compressed_risks` covers this.
+
+After the fix:
+- **FedGuard seed 0:** τ_r = 0.004, 0.16 false alarms/100 h, sensitivity 2.4%.
+- **FedGuard seeds 1–2:** never alerting has the highest validation utility, so the tuned policy raises no alarms.
+
+**Finding:** at ε = 3 the DP models (test AUROC ~0.62) cannot support a useful alerting policy.
+
+## D30. Source of the alert headline and the bedside demo (Adopted)
+
+The spec intends "FedGuard" alerts. With DP at ε = 3 there is no useful alerting (D29), and a bedside replay would show flat ~0.003 risk curves. So:
+- `results.json → alerts` and the bedside patients come from **async federated learning without DP**: FedGuard's aggregation (α₀ = 4) with MC-Dropout uncertainty gating.
+  - MC predictions are added post hoc from the saved best checkpoint with `fedguard mc-predict`, T = 50.
+  - Test AUROC 0.766, seed 0.
+- Everywhere they appear (`results_full.json`, the app, docs/results.md) they are labelled "async FL, no DP". The DP-model alert results and the centralized-model alert results are reported next to them.
+- Seed 0 test results (validation-tuned thresholds):
+  - async FL without DP: threshold-only 1.10 false alarms/100 patient-hours at 41.6% sensitivity; gated 0.95 at 40.0% (−14% false alarms, −1.6 points sensitivity);
+  - centralized: 1.10 at 45.7% → 0.78 at 43.7% (−29%, −2.0 points).
+- The uncertainty gate's benefit is therefore shown on federated and centralized models without DP. Combining it with DP at ε = 3 is not useful with this model and data.
 
 ## D12. Library versions (Adopted)
 

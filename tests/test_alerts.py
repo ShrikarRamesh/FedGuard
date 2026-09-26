@@ -84,6 +84,15 @@ def _preds(seed: int, n_pat: int = 60) -> Predictions:
     )
 
 
+def test_threshold_grid_adapts_to_compressed_risks():
+    """A model whose risks never exceed 0.01 must still get thresholds inside its range (D29)."""
+    p = _preds(3)
+    small = Predictions(p.patient_idx, p.hour, p.y, p.p * 0.005, p.p_mc_mean * 0.005, p.p_mc_std * 0.005)
+    params = tune(small)
+    assert params["tau_r"] < 0.005
+    assert params["val_threshold_only"]["n_true"] + params["val_threshold_only"]["n_false"] > 0
+
+
 def test_tuning_uses_validation_only_and_respects_constraint():
     val, test = _preds(0), _preds(1)
     params = tune(val, refractory=6, max_sens_drop=0.02)

@@ -126,7 +126,8 @@ class FLEngine:
                 else calibrate_noise(float(targets[c]), float(p.delta), q, steps)
             )
             setup_dp(cl, targets[c], sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
-                     p.get("physical_batch_size"), lr=float(p.get("lr", 5e-4)))  # fmt: skip
+                     p.get("physical_batch_size"), lr=float(p.get("lr", 5e-4)),
+                     windows_per_patient=int(p.get("windows_per_patient", 1)))  # fmt: skip
             out[c] = {
                 "target_eps": targets[c], "delta": float(p.delta), "noise_multiplier": sigma, "sample_rate": q,
                 "planned_steps": steps, "r_max": R, "planned_eps": epsilon_after(sigma, q, steps, float(p.delta)),
@@ -230,7 +231,8 @@ class FLEngine:
     def _planned_samples(self, cl: FLClient) -> int:
         if cl.dp is None:
             return cl.local_steps * cl.batch_size
-        return int(cl.dp.local_epochs * cl.n_patients)  # expected samples under Poisson sampling
+        k = cl.dp.custom.windows_per_patient if cl.dp.custom is not None else 1
+        return int(cl.dp.local_epochs * cl.n_patients * k)  # expected windows under Poisson sampling
 
     # ------------------------------------------------------------------ async
     def run_async(self) -> None:

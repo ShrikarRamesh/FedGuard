@@ -21,11 +21,9 @@ format:
 	$(PY) -m ruff check --fix src tests app
 	$(PY) -m black src tests app
 
-# End-to-end --fast pipeline. Steps are added as milestones land (see PROGRESS.md).
+# End-to-end --fast pipeline: download check -> process -> train -> FL -> DP -> alerts -> export -> app smoke.
 smoke:
-	$(PY) -m fedguard.cli data download --fast
-	$(PY) -m fedguard.cli data process --fast
-	$(PY) -m fedguard.cli data eda --fast
+	$(PY) scripts/smoke.py
 
 app:
-	$(PY) -m streamlit run app/streamlit_app.py
+	cd app && $(PY) -m streamlit run streamlit_app.py

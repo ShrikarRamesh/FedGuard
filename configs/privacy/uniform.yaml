@@ -1,13 +1,14 @@
 # Patient-level DP-SGD per client (Opacus, RDP accountant, Poisson sampling over patients; D2).
 # epsilon is the TOTAL budget over all of a client's training, at delta.
+# DP-SGD hyperparameters selected on validation AUPRC (D24, D26, D27): batch 1024, 5 patient-epochs, lr 5e-4.
 enabled: true
 unit: patient
 budget_rule: uniform     # uniform | adaptive | inverse | equal_noise
 epsilon: 3.0
 delta: 1.0e-5            # asserted < 1 / n_i (training patients of client i)
-max_grad_norm: 1.0
-logical_batch_size: 256  # expected patients per step (q = 1 / ceil(n_i / 256))
-physical_batch_size: null  # BatchMemoryManager chunk; null = no split needed on 6 GB
+max_grad_norm: 1.0       # C; not tuned (D26: measured gradient norms show C is not the bottleneck)
+logical_batch_size: 1024 # expected patients per step (q = 1 / ceil(n_i / 1024))
+physical_batch_size: 256 # BatchMemoryManager chunk (fits the 6 GB GPU)
 local_epochs: 5          # patient-epochs per participation
 r_max: 40                # max participations; noise calibrated for local_epochs x r_max patient-epochs
 lr: 5.0e-4               # AdamW on privatised gradients (post-processing; D17)
@@ -17,3 +18,4 @@ _fast:
   local_epochs: 1
   r_max: 2
   logical_batch_size: 8
+  physical_batch_size: null

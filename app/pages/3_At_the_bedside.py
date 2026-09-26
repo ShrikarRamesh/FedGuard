@@ -32,6 +32,8 @@ if res is None or not res.get("patients"):
 pats = res["patients"]
 meta = full.get("patients_meta", {})
 REF = int(meta.get("refractory", 6))
+if meta.get("source_label"):
+    st.info(f"Model shown: {meta['source_label']} (seed 0). Why not the DP model: see docs/decisions.md D30.")
 
 with st.sidebar:
     pi = st.radio("Patient", range(len(pats)), format_func=lambda i: pats[i]["name"]

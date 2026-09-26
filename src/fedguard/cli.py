@@ -320,6 +320,39 @@ def alerts(experiment: ExpOpt = "fedguard", fast: Fast = False, seeds: SeedsOpt 
         )
 
 
+@app.command("mc-predict")
+def mc_predict_cmd(experiment: ExpOpt = "async_nodp", fast: Fast = False, seeds: SeedsOpt = None) -> None:
+    """Add MC-Dropout mean/std (T = model.mc_dropout_T) to finished runs' preds_{val,test}.npz, from best.pt.
+    Deterministic predictions are left unchanged."""
+    from fedguard.data.windows import WindowDataset
+    from fedguard.eval.predictions import Predictions
+    from fedguard.eval.run_artifacts import load_model, load_preds, run_config, run_norm, run_scenario
+    from fedguard.train import loops
+    from fedguard.utils.io import read_json, write_json
+
+    for d in _run_dirs(experiment, fast, seeds):
+        cfg = run_config(d)
+        sc = run_scenario(cfg)
+        norm = run_norm(d)
+        device = loops.get_device("auto")
+        T = int(cfg.model.mc_dropout_T)
+        for split in ("val", "test"):
+            arr = sc.arrays(None, split, norm)
+            model = load_model(d, cfg, arr.spec.n_channels, device)
+            mu, sd = loops.predict_mc(
+                model, WindowDataset(arr, sc.cfg.lookback), device, T=T, seed=int(cfg.seed)
+            )
+            old = load_preds(d, split)
+            new = Predictions.from_arrays(arr, old.p, p_mc_mean=mu, p_mc_std=sd)
+            if not (new.patient_idx == old.patient_idx).all():
+                raise RuntimeError(f"{d}: row order changed; refusing to overwrite predictions")
+            new.save(d / f"preds_{split}.npz")
+        m = read_json(d / "metrics.json")
+        m.setdefault("info", {})["mc_dropout_T_posthoc"] = T
+        write_json(d / "metrics.json", m)
+        typer.secho(f"{d.name}: MC-Dropout (T={T}) added to preds_val/test", fg="green")
+
+
 @app.command("mc-ablation")
 def mc_ablation(experiment: ExpOpt = "fedguard", fast: Fast = False, seeds: SeedsOpt = "0") -> None:
     """MC-Dropout T in {5,10,20,50}: ECE and alert metrics (thresholds re-tuned on validation per T)."""
@@ -380,12 +413,17 @@ def report(fast: Fast = False) -> None:
 
 
 @app.command()
-def export(fast: Fast = False) -> None:
+def export(
+    fast: Fast = False,
+    alerts_from: Annotated[
+        str, typer.Option(help="Experiment driving alerts + bedside patients (D30)")
+    ] = "async_nodp",
+) -> None:
     """Write results/results.json (+ results_full.json) for the HTML and Streamlit front ends (M9)."""
     from fedguard.export.results_json import export as do_export
     from fedguard.export.results_json import validate
 
-    r = do_export(fast)
+    r = do_export(fast, alerts_from=alerts_from)
     validate(r["results"])
     if r["missing"]:
         typer.secho(f"not run yet (written as null): {r['missing']}", fg="yellow")

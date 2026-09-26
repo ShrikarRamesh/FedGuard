@@ -85,6 +85,79 @@ def test_adaptive_dp_budgets_follow_rule(tiny_scenario, tmp_path):  # noqa: F811
     eng.run()
 
 
+def _small_model(dropout=0.0):
+    from fedguard.models.patchtst import PatchTST
+
+    return PatchTST(107, 24, d_model=16, n_layers=1, n_heads=2, d_ff=16, dropout=dropout, head_hidden=8)
+
+
+def test_k1_per_patient_clipping_equals_opacus():
+    """k = 1: our per-patient clipped sum == Opacus' per-sample clipped sum on the same batch."""
+    from opacus import GradSampleModule
+
+    from fedguard.privacy.dp import per_patient_clipped_sum
+    from fedguard.train.loops import make_loss
+
+    torch.manual_seed(0)
+    model = _small_model()
+    x = torch.randn(6, 24, 107)
+    m = torch.ones(6, 24, dtype=torch.bool)
+    m[1, :10] = False
+    x = x * m.unsqueeze(-1)
+    y = torch.tensor([0.0, 1, 0, 0, 1, 0])
+    loss_fn = make_loss("bce", 10.0)
+    summed, norms = per_patient_clipped_sum(model, loss_fn, x[:, None], m[:, None], y[:, None], clip=0.05)
+    gsm = GradSampleModule(
+        _copy(model), loss_reduction="sum"
+    )  # per-sample loss summed -> raw per-sample grads
+    loss_sum = torch.nn.functional.binary_cross_entropy_with_logits(
+        gsm(x, m), y, pos_weight=torch.tensor(10.0), reduction="sum"
+    )
+    loss_sum.backward()
+    gs = {n.removeprefix("_module."): p.grad_sample for n, p in gsm.named_parameters()}
+    ref_norms = torch.sqrt(sum((g.reshape(6, -1) ** 2).sum(1) for g in gs.values()))
+    torch.testing.assert_close(norms, ref_norms, rtol=1e-4, atol=1e-6)
+    fac = (0.05 / (ref_norms + 1e-6)).clamp(max=1)
+    for n, g in gs.items():
+        torch.testing.assert_close(summed[n], torch.einsum("p,p...->...", fac, g), rtol=1e-4, atol=1e-7)
+    assert (norms > 0.05).any()  # clipping was actually exercised
+
+
+def _copy(model):
+    import copy
+
+    return copy.deepcopy(model)
+
+
+def test_k_windows_gradient_is_mean_over_patient_windows():
+    from fedguard.privacy.dp import per_patient_clipped_sum
+    from fedguard.train.loops import make_loss
+
+    torch.manual_seed(1)
+    model = _small_model()
+    x = torch.randn(2, 3, 24, 107)
+    m = torch.ones(2, 3, 24, dtype=torch.bool)
+    y = torch.tensor([[0.0, 1, 0], [0, 0, 0]])
+    loss_fn = make_loss("bce", 2.0)
+    summed, norms = per_patient_clipped_sum(model, loss_fn, x, m, y, clip=1e6)  # no clipping
+    model.zero_grad()
+    (loss_fn(model(x[0], m[0]), y[0]) + loss_fn(model(x[1], m[1]), y[1])).backward()
+    for n, p in model.named_parameters():
+        torch.testing.assert_close(summed[n], p.grad, rtol=1e-4, atol=1e-6)
+
+
+def test_patient_dpsgd_accounting(tiny_scenario, tmp_path):  # noqa: F811
+    cfg = tiny_cfg("fedavg_dp", **{"fl.rounds": 3, "privacy.r_max": 2, "privacy.logical_batch_size": 4,
+                                   "privacy.local_epochs": 1, "privacy.windows_per_patient": 4})  # fmt: skip
+    eng = FLEngine(tiny_scenario, cfg, tmp_path, 0, torch.device("cpu"))
+    res = eng.run()
+    for c, cl in eng.clients.items():
+        assert cl.dp.custom is not None and cl.dp.exhausted
+        assert cl.dp.custom.steps == eng.budgets[c]["planned_steps"]  # accountant stepped exactly as planned
+        assert res.client_summary[c]["eps"] == pytest.approx(eng.budgets[c]["planned_eps"], rel=1e-6)
+        assert res.client_summary[c]["eps"] <= eng.budgets[c]["target_eps"] + 1e-9
+
+
 def test_patient_window_dataset_one_window_per_patient(tiny_scenario):  # noqa: F811
     from fedguard.fl.client import PatientWindowDataset
 

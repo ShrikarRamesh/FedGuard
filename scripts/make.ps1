@@ -36,11 +36,9 @@ switch ($Target) {
         Invoke-Step @('-m', 'black', 'src', 'tests', 'app')
     }
     'smoke' {
-        # End-to-end --fast pipeline; steps are added as milestones land.
-        Invoke-Step @('-m', 'fedguard.cli', 'data', 'download', '--fast')
-        Invoke-Step @('-m', 'fedguard.cli', 'data', 'process', '--fast')
-        Invoke-Step @('-m', 'fedguard.cli', 'data', 'eda', '--fast')
+        # End-to-end --fast pipeline (download check -> ... -> export -> app smoke tests)
+        Invoke-Step @('scripts/smoke.py')
     }
-    'app'   { Invoke-Step @('-m', 'streamlit', 'run', 'app/streamlit_app.py') }
+    'app'   { Set-Location (Join-Path $Root 'app'); Invoke-Step @('-m', 'streamlit', 'run', 'streamlit_app.py') }
     default { throw "unknown target '$Target' (install, test, test-all, lint, format, smoke, app)" }
 }

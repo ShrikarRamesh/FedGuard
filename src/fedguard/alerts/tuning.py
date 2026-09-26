@@ -22,6 +22,14 @@ from fedguard.eval.utility import normalized_utility
 TAU_R_GRID = np.round(np.linspace(0.05, 0.97, 47), 3)
 
 
+def _risk_grid(mean: np.ndarray) -> np.ndarray:
+    """Candidate risk thresholds: the fixed grid plus quantiles of the model's own VALIDATION risk (50th-99.9th
+    percentile). Models with compressed outputs (e.g. DP models predicting near the 1.7% base rate, max < 0.01)
+    would otherwise never alert at any fixed threshold >= 0.05 (D29)."""
+    qs = np.quantile(mean, np.concatenate([np.linspace(0.50, 0.99, 50), [0.995, 0.998, 0.999]]))
+    return np.unique(np.concatenate([TAU_R_GRID, np.round(qs, 6)]))
+
+
 def _std_grid(std: np.ndarray, n: int = 20) -> np.ndarray:
     qs = np.quantile(std, np.linspace(0.05, 0.95, n))
     return np.unique(np.round(np.concatenate([qs, [np.inf]]), 5))
@@ -36,8 +44,9 @@ def _mc(p: Predictions) -> tuple[np.ndarray, np.ndarray]:
 def tune(val: Predictions, refractory: int = 6, max_sens_drop: float = 0.02) -> dict[str, Any]:
     mean, std = _mc(val)
     y, offs = val.y, val.offsets()
+    r_grid = _risk_grid(mean)
     grid_thr = []
-    for tr in TAU_R_GRID:
+    for tr in r_grid:
         a = threshold_only(mean, tr)
         grid_thr.append({"tau_r": float(tr), "utility": normalized_utility(y, a.astype(np.int8), offs)})
     tau_r = max(grid_thr, key=lambda r: r["utility"])["tau_r"]
@@ -51,7 +60,7 @@ def tune(val: Predictions, refractory: int = 6, max_sens_drop: float = 0.02) -> 
     chosen = min(ok, key=lambda g: (g["false_per_100h"], -g["tau_s"])) if ok else {"tau_s": float("inf")}
     # jointly utility-optimal gated policy
     joint = []
-    for tr in TAU_R_GRID:
+    for tr in r_grid[:: max(1, len(r_grid) // 50)]:  # joint search on a thinned grid (cost)
         for ts in s_grid:
             a = uncertainty_gated(mean, std, tr, ts)
             joint.append(

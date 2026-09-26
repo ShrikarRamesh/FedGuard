@@ -9,8 +9,8 @@ look at model performance for septic patients:
   * 1 non-septic "false alarm avoided": seeded random among non-septic test patients (36-96 h) where
     threshold-only alerting raises >= 1 alarm and the uncertainty-gated policy raises none (spec example);
   * 2 non-septic: seeded random among the remaining non-septic test patients with 36-96 h stays.
-Risk curves are the FedGuard (eps = 3, seed 0) model's MC-Dropout mean/std; thresholds are the ones tuned
-on validation for that run. Vitals are raw clinical units, forward-filled within the stay (null before the
+Risk curves are the MC-Dropout mean/std (T = 50) of the `alerts_from` experiment's seed-0 model (default: async
+federated learning without DP, D30); thresholds are the ones tuned on validation for that run. Vitals are raw clinical units, forward-filled within the stay (null before the
 first measurement). Attributions are Integrated Gradients of the logit per variable, one row per hour
 (the window ending at that hour).
 """
@@ -131,7 +131,20 @@ def build_patients(run_dir: Path, top_labs: list[str], seed: int = 0) -> tuple[l
                  "selection_seed": seed}  # fmt: skip
 
 
-def export(fast: bool = False) -> dict[str, Any]:
+ALERT_SOURCE_LABELS = {
+    "async_nodp": "async federated learning (FedGuard aggregation), no DP, MC-Dropout T=50",
+    "fedguard": "FedGuard (async + adaptive DP, eps=3), MC-Dropout T=50",
+    "centralized_patchtst": "centralized (pooled data, not permitted), MC-Dropout T=50",
+}
+
+
+def _alerts_of(experiment: str, fast: bool) -> list[dict]:
+    runs = completed_runs(experiment + ("_fast" if fast else ""))
+    return [read_json(d / "alerts.json") for d in runs.values() if (d / "alerts.json").exists()]
+
+
+def export(fast: bool = False, alerts_from: str = "async_nodp") -> dict[str, Any]:
+    """``alerts_from``: experiment whose alert metrics and seed-0 model drive results.json alerts + patients (D30)."""
     df = collect(fast)
     mt = main_table(df).set_index("method")
     pt = privacy_table(df)
@@ -156,8 +169,8 @@ def export(fast: bool = False) -> dict[str, Any]:
         if "_nodp_auroc" in pt and pt["_nodp_auroc"].notna().any()
         else None
     )
-    fg_runs = completed_runs("fedguard" + ("_fast" if fast else ""))
-    al = [read_json(d / "alerts.json") for d in fg_runs.values() if (d / "alerts.json").exists()]
+    fg_runs = completed_runs(alerts_from + ("_fast" if fast else ""))
+    al = _alerts_of(alerts_from, fast)
     alerts = {}
     for pol, key in (("threshold_only", "threshold_only"), ("fedguard", "fedguard")):
         if al:
@@ -176,7 +189,7 @@ def export(fast: bool = False) -> dict[str, Any]:
         )
         patients, pmeta = build_patients(fg_runs[0], top)
     else:
-        missing.append("patients (FedGuard seed 0 with alerts.json)")
+        missing.append(f"patients ({alerts_from} seed 0 with alerts.json)")
     res = {"methods": methods, "prevalence": prevalence,
            "privacy": {"eps": EPS, "uniform": lines["uniform"], "adaptive": lines["adaptive"], "no_dp": nodp},
            "alerts": alerts, "patients": patients}  # fmt: skip
@@ -186,7 +199,14 @@ def export(fast: bool = False) -> dict[str, Any]:
     full = {
         "results": res,
         "missing": missing,
-        "patients_meta": pmeta,
+        "patients_meta": {
+            **pmeta,
+            "source": alerts_from,
+            "source_label": ALERT_SOURCE_LABELS.get(alerts_from, alerts_from),
+        },
+        "alerts_source": alerts_from,
+        "alerts_source_label": ALERT_SOURCE_LABELS.get(alerts_from, alerts_from),
+        "alerts_by_model": {k: _alerts_of(k, fast) for k in ALERT_SOURCE_LABELS},
         "main_table": main_table(df).drop(columns=[], errors="ignore").to_dict(orient="records"),
         "privacy_table": pt.to_dict(orient="records"),
         "alerts_per_seed": al,

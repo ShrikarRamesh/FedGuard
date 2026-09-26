@@ -71,6 +71,8 @@ class DPState:
     loader: Any
     participations: int = 0
     exhausted: bool = False
+    custom: Any = None  # PatientDPSGD when k > 1 windows per patient (D25)
+    steps_per_epoch: int = 0
 
 
 @dataclass
@@ -109,6 +111,8 @@ class FLClient:
         """Total epsilon spent so far (0 before the first DP step, 0 for non-DP clients)."""
         if self.dp is None or self.dp.participations == 0:
             return 0.0
+        if self.dp.custom is not None:
+            return self.dp.custom.epsilon(self.dp.delta)
         return float(self.dp.engine.get_epsilon(self.dp.delta))
 
     def can_participate(self) -> bool:
@@ -155,6 +159,18 @@ class FLClient:
         assert dp is not None
         loss_sum, steps, samples = 0.0, 0, 0
         self.model.train()
+        if dp.custom is not None:  # k windows per patient, torch.func per-patient clipping (D25)
+            for _ in range(dp.local_epochs * dp.steps_per_epoch):
+                r = dp.custom.step(loss_fn)
+                loss_sum += r["loss"] * r["patients"]
+                samples += int(r["patients"])
+                steps += 1
+            dp.participations += 1
+            if dp.participations >= dp.r_max or (
+                dp.target_eps is not None and self.epsilon() >= dp.target_eps
+            ):
+                dp.exhausted = True
+            return {"loss": loss_sum / max(samples, 1), "steps": steps, "samples": samples}
         for _ in range(dp.local_epochs):
             use_bmm = dp.physical_batch is not None
             ctx = (
@@ -195,14 +211,29 @@ def _zero_grad_samples(model: nn.Module) -> None:
 def setup_dp(
     client: FLClient, target_eps: float | None, noise_multiplier: float, delta: float, logical_batch: int,
     r_max: int, local_epochs: int, max_grad_norm: float, physical_batch: int | None, lr: float,
+    windows_per_patient: int = 1,
 ) -> None:  # fmt: skip
-    """Wrap the client's model/optimizer/loader with Opacus (Poisson sampling over patients, RDP accountant)."""
+    """Make the client patient-level DP. k = 1: Opacus (Poisson sampling over patients, RDP accountant).
+    k > 1: ``PatientDPSGD`` (k windows per sampled patient, per-patient clipping; same accountant)."""
+    import math
+
     from opacus import PrivacyEngine
 
     from fedguard.privacy.accounting import check_delta, planned_steps
 
     check_delta(delta, client.n_patients)
     q, steps = planned_steps(client.n_patients, logical_batch, local_epochs, r_max)
+    if windows_per_patient > 1:
+        from fedguard.privacy.dp import PatientDPSGD
+
+        custom = PatientDPSGD(
+            model=client.model, arrays=client.train_arrays, lookback=client.lookback, noise_multiplier=noise_multiplier,
+            sample_rate=q, max_grad_norm=max_grad_norm, windows_per_patient=windows_per_patient, lr=lr,
+            weight_decay=client.weight_decay, seed=client.seed * 7919 + 17, device=client.device,
+        )  # fmt: skip
+        client.dp = DPState(target_eps, delta, noise_multiplier, q, steps, r_max, local_epochs, None, None, None, None,
+                            custom=custom, steps_per_epoch=math.ceil(client.n_patients / logical_batch))  # fmt: skip
+        return
     ds = PatientWindowDataset(client.train_arrays, client.lookback, seed=client.seed * 7919 + 17)
     loader = torch.utils.data.DataLoader(
         ds, batch_size=logical_batch, shuffle=False, collate_fn=loops.collate_windows
