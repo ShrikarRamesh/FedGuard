@@ -54,13 +54,14 @@ def fit_predict(
         clf = lgb.LGBMClassifier(
             n_estimators=2000, learning_rate=0.05, num_leaves=63, subsample=0.8, subsample_freq=1,
             colsample_bytree=0.5, scale_pos_weight=spw, random_state=seed, verbose=-1, n_jobs=-1,
+            metric="average_precision",  # the ONLY metric: early stopping must not watch binary_logloss
         )  # fmt: skip
         has_both = 0 < yva.sum() < len(yva)
         clf.fit(
             Xtr, ytr,
             eval_set=[(Xva, yva)] if has_both else None,
             eval_metric="average_precision",
-            callbacks=[lgb.early_stopping(50, verbose=False)] if has_both else None,
+            callbacks=[lgb.early_stopping(50, first_metric_only=True, verbose=False)] if has_both else None,
         )  # fmt: skip
         info["best_iteration"] = int(clf.best_iteration_ or clf.n_estimators)
 

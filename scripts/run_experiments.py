@@ -85,6 +85,26 @@ def jobs_sweep() -> list[list[str]]:
     return j
 
 
+def jobs_sweep_ext() -> list[list[str]]:
+    """Single-seed extension of the privacy sweep to large eps (D31): the planned grid (eps <= 8) showed no recovery."""
+    return [["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "sweep_adaptive_ext",
+             "-o", f"privacy.epsilon={e}", "-o", "eval.mc_dropout=false"] for e in (16.0, 32.0, 64.0, 256.0)]  # fmt: skip
+
+
+def jobs_dp_diag() -> list[list[str]]:
+    """Diagnose the eps sweep (accuracy fell as eps grew, D32): same FedGuard DP pipeline, seed 0.
+    sigma = 0 runs have NO privacy guarantee; they measure the ceiling of the DP training recipe itself."""
+    base = ["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "dp_diag", "-o", "eval.mc_dropout=false"]
+    return [
+        base + ["-o", "privacy.noise_multiplier_override=0.0"],
+        base + ["-o", "privacy.noise_multiplier_override=0.0", "-o", "privacy.lr=0.0001"],
+        base + ["-o", "privacy.epsilon=16.0", "-o", "privacy.lr=0.0001"],
+        # round 2 (sigma = 0 still degrades at lr 1e-4): isolate optimizer-state carry-over and clipping bias
+        base + ["-o", "privacy.noise_multiplier_override=0.0", "-o", "privacy.reset_optimizer=true"],
+        base + ["-o", "privacy.noise_multiplier_override=0.0", "-o", "privacy.max_grad_norm=1000.0"],
+    ]
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -122,11 +142,21 @@ def jobs_ablations() -> list[list[str]]:
     return j
 
 
-STAGES = {"tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "baselines": jobs_baselines, "ablations": jobs_ablations}
+def jobs_posthoc() -> list[list[str]]:
+    """Analyses of finished runs: attack on FedAvg seed 0, explanations, MC-Dropout T ablation (D30 model)."""
+    return [
+        ["attack", "-e", "fedavg", "--seed", "0"],
+        ["explain", "-e", "async_nodp", "--seeds", "0"],
+        ["explain", "-e", "fedguard", "--seeds", "0"],
+        ["mc-ablation", "-e", "async_nodp", "--seeds", "0"],
+    ]
+
+
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 4 * 3600  # longest legitimate job (~1 h under contention) x 4
-GPU_COMMANDS = {"train", "fl", "attack", "mc-ablation", "explain", "alerts"}
+GPU_COMMANDS = {"train", "fl", "attack", "mc-ablation", "mc-predict", "explain", "alerts"}
 
 
 def running_gpu_jobs() -> int:

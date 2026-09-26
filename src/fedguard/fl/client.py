@@ -73,6 +73,7 @@ class DPState:
     exhausted: bool = False
     custom: Any = None  # PatientDPSGD when k > 1 windows per patient (D25)
     steps_per_epoch: int = 0
+    reset_optimizer: bool = False  # clear AdamW state at each participation (D32)
 
 
 @dataclass
@@ -111,6 +112,8 @@ class FLClient:
         """Total epsilon spent so far (0 before the first DP step, 0 for non-DP clients)."""
         if self.dp is None or self.dp.participations == 0:
             return 0.0
+        if self.dp.noise_multiplier <= 0:  # diagnostic sigma = 0 run: no guarantee (D32)
+            return float("inf")
         if self.dp.custom is not None:
             return self.dp.custom.epsilon(self.dp.delta)
         return float(self.dp.engine.get_epsilon(self.dp.delta))
@@ -159,6 +162,9 @@ class FLClient:
         assert dp is not None
         loss_sum, steps, samples = 0.0, 0, 0
         self.model.train()
+        if dp.reset_optimizer:  # fresh AdamW moments each participation, as in non-DP FedAvg (D32)
+            opt = dp.custom.opt if dp.custom is not None else dp.optimizer.original_optimizer
+            opt.state.clear()
         if dp.custom is not None:  # k windows per patient, torch.func per-patient clipping (D25)
             for _ in range(dp.local_epochs * dp.steps_per_epoch):
                 r = dp.custom.step(loss_fn)

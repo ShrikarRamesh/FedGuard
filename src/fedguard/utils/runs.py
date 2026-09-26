@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -118,6 +119,7 @@ def create_run(
         {
             "experiment": experiment,
             "seed": seed,
+            "pid": os.getpid(),  # lets scripts/watchdog.py stop a hung job
             "config_hash": config_hash(conf),
             "created": datetime.now().isoformat(),
             "argv": argv if argv is not None else sys.argv,

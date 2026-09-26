@@ -238,6 +238,59 @@ The spec intends "FedGuard" alerts. With DP at ε = 3 there is no useful alertin
   - centralized: 1.10 at 45.7% → 0.78 at 43.7% (−29%, −2.0 points).
 - The uncertainty gate's benefit is therefore shown on federated and centralized models without DP. Combining it with DP at ε = 3 is not useful with this model and data.
 
+## D31. Privacy sweep extended to large ε, single seed (Adopted)
+
+The planned sweep (ε ∈ {1, 2, 3, 5, 8}, adaptive rule) shows no recovery. Seed 0 test AUROC:
+
+| ε | 1 | 2 | 3 | 5 | 8 |
+|---|---|---|---|---|---|
+| Adaptive | 0.646 | 0.642 | 0.637 | 0.621 | 0.610 |
+| Uniform | – | 0.642 | 0.636 | 0.619 | – |
+
+The like-for-like no-DP reference (public normalisation) is 0.753. At ε = 8 the required noise multipliers are still 4.1–5.0.
+- **Extension:** the queue `sweep_ext` adds ε ∈ {16, 32, 64, 256}, adaptive rule, **seed 0 only**. Noise multipliers for the smallest / largest client: 2.67 / 2.41 at ε = 16, 1.65 / 1.51 at 32, 1.09 / 1.01 at 64, 0.55 / 0.53 at 256.
+- **Purpose:** locate where accuracy starts recovering. It is reported as a single-seed extension, separate from the 3-seed grid.
+- **Caveat:** ε ≥ 16 offers little meaningful formal protection. Those points characterise the privacy–utility trade-off; they are not recommended operating points.
+
+## D32. The ε sweep degrades as ε grows: DP recipe under diagnosis (Open; blocks the privacy result)
+
+Seed-0 test AUROC of FedGuard (adaptive rule) falls monotonically as ε grows:
+
+| ε | 1 | 2 | 3 | 5 | 8 | 16 (extension) |
+|---|---|---|---|---|---|---|
+| Test AUROC | 0.646 | 0.642 | 0.637 | 0.621 | 0.610 | 0.585 |
+
+The no-DP reference is 0.753. Less noise producing a worse model means the curve is **not** a clean privacy–utility trade-off. The DP training recipe (patient sampling, clipping, AdamW at lr 5e-4, pos_weight 10), selected only at ε = 3, is likely failing on its own.
+- **Hypothesis:** noise inflates AdamW's second-moment estimate and acts as an implicit learning-rate reduction. With less noise the effective step grows and training collapses; the small-model run's rising training loss is consistent with this.
+- **Action taken:**
+  - the DP sweep, the ε extension and the DP budget-rule ablations are paused; completed runs are kept;
+  - three seed-0 diagnostics (`dp_diag`) are running: **σ = 0 with the identical pipeline** (clipping, no noise), which measures the recipe's ceiling and has **no privacy guarantee** (ε reported as ∞); σ = 0 at lr 1e-4; ε = 16 at lr 1e-4.
+- **Diagnostic results so far** (seed 0; σ = 0 runs have no privacy guarantee):
+  - σ = 0, lr 5e-4 → test AUROC 0.723 (0.695–0.752);
+  - σ = 0, lr 1e-4 → 0.666 (0.632–0.698), with validation AUROC rising to 0.61 then **decaying** to 0.53 during training.
+  - So even without noise, the DP recipe degrades with training. Noise is not the root cause.
+- **Round 2** (σ = 0, lr 5e-4):
+  - (a) `privacy.reset_optimizer=true`: clear AdamW state each participation, as the non-DP path does. The suspect is stale moments applied to a new global model each round.
+  - (b) `privacy.max_grad_norm=1000`: effectively no clipping. The suspect is class-imbalance clipping bias: positive-window gradient norms (~150) are clipped about 150× at C = 1, while negatives (~0.006) are not.
+- **If the recipe is at fault:** it is fixed, and DP results are rerun before any privacy claim. The ~0.62 at ε = 3 is not reported as the privacy cost until then.
+- **Operational note:** a second hung job (sweep_uniform ε = 1, seed 0; stuck 3 h 20 min) prompted `scripts/watchdog.py`. It kills jobs whose run dir shows no progress for 45 min; the pid is recorded in `meta.json`.
+
+## D33. LightGBM early-stopping bug fixed; strong tree baseline reported as such (Adopted)
+
+The first LightGBM baseline stopped after **1 tree** (test AUROC 0.722). With `eval_metric="average_precision"`, LightGBM still tracked its default `binary_logloss`, and `lgb.early_stopping` stops when *any* metric fails to improve. Under `scale_pos_weight` ≈ 60, validation log-loss worsens immediately.
+- **Fix:** `metric="average_precision"` as the only metric and `first_metric_only=True`.
+- **Rerun:** 111 trees; test AUROC **0.817**, AUPRC 0.092. The buggy run is kept in `runs/_superseded/` and excluded from reports.
+- **Finding** (centralized, seed 0 unless noted):
+
+  | Model | Test AUROC | Test AUPRC |
+  |---|---|---|
+  | PatchTST (3 seeds) | 0.816 ± 0.011 | 0.106 |
+  | LightGBM | 0.817 | 0.092 |
+  | Logistic regression | 0.798 | 0.083 |
+
+  A tuned tree ensemble on hand-crafted features matches the transformer's AUROC; PatchTST leads only in AUPRC.
+- **Implication:** the choice of a neural model in FedGuard is justified by what the system needs (gradient-based FedAvg/FedProx, DP-SGD, MC-Dropout uncertainty, Integrated Gradients), not by a large accuracy advantage. The report says this explicitly.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

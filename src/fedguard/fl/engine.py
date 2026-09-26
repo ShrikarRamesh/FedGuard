@@ -117,20 +117,31 @@ class FLEngine:
             big = max(n_pat, key=n_pat.get)
             q, steps = planned_steps(n_pat[big], B, E, R)
             shared_sigma = calibrate_noise(float(p.epsilon), float(p.delta), q, steps)
+        # DIAGNOSTIC ONLY (D32): a fixed noise multiplier (e.g. 0 = the DP pipeline with clipping but no noise).
+        # Such runs carry NO privacy guarantee; eps is reported as inf and budgets are not enforced (R_max only).
+        override = p.get("noise_multiplier_override")
         out = {}
         for c, cl in self.clients.items():
             q, steps = planned_steps(cl.n_patients, B, E, R)
-            sigma = (
-                shared_sigma
-                if shared_sigma is not None
-                else calibrate_noise(float(targets[c]), float(p.delta), q, steps)
-            )
-            setup_dp(cl, targets[c], sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
+            if override is not None:
+                sigma = float(override)
+                target = None
+            else:
+                sigma = (
+                    shared_sigma
+                    if shared_sigma is not None
+                    else calibrate_noise(float(targets[c]), float(p.delta), q, steps)
+                )
+                target = targets[c]
+            setup_dp(cl, target, sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
                      p.get("physical_batch_size"), lr=float(p.get("lr", 5e-4)),
                      windows_per_patient=int(p.get("windows_per_patient", 1)))  # fmt: skip
+            cl.dp.reset_optimizer = bool(p.get("reset_optimizer", False))
             out[c] = {
-                "target_eps": targets[c], "delta": float(p.delta), "noise_multiplier": sigma, "sample_rate": q,
-                "planned_steps": steps, "r_max": R, "planned_eps": epsilon_after(sigma, q, steps, float(p.delta)),
+                "target_eps": target, "delta": float(p.delta), "noise_multiplier": sigma, "sample_rate": q,
+                "planned_steps": steps, "r_max": R,
+                "planned_eps": epsilon_after(sigma, q, steps, float(p.delta)) if sigma > 0 else float("inf"),
+                "diagnostic_no_guarantee": override is not None,
             }  # fmt: skip
         return out
 
