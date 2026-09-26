@@ -10,6 +10,8 @@ Correctness, honesty and reproducibility matter more than speed. A smaller syste
 - `make` is not installed on the Windows dev machine. Use `scripts\make.ps1 <target>` (same targets as the `Makefile`).
 - `aws` CLI is not installed; `fedguard data download` uses pure-Python HTTPS against the public PhysioNet S3 bucket.
 - GPU: RTX 4050 Laptop, 6 GB VRAM, CUDA 13.1 driver, torch cu130 wheels.
+- **Data and runs live outside OneDrive:** `FEDGUARD_DATA_DIR=C:\Users\Shrikar\fedguard-work\data`, `FEDGUARD_RUNS_DIR=C:\Users\Shrikar\fedguard-work\runs` (user-level env vars). Raw PhysioNet 2019 is downloaded and verified; processed arrays are in `<data>/processed/` (fast subset in `processed_fast/`).
+- **Privacy unit is the patient** (D2, approved): DP datasets sample patients, one random window each; δ < 1/(training patients).
 
 ## Non-negotiable rules
 

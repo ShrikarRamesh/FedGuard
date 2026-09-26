@@ -23,7 +23,9 @@ format:
 
 # End-to-end --fast pipeline. Steps are added as milestones land (see PROGRESS.md).
 smoke:
-	$(PY) -m fedguard.cli info
+	$(PY) -m fedguard.cli data download --fast
+	$(PY) -m fedguard.cli data process --fast
+	$(PY) -m fedguard.cli data eda --fast
 
 app:
 	$(PY) -m streamlit run app/streamlit_app.py

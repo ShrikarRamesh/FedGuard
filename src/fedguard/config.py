@@ -129,6 +129,14 @@ class DataConfig(_Strict):
         return self
 
 
+def load_data_config(fast: bool = False, overrides: list[str] | None = None) -> DataConfig:
+    """Load and validate ``configs/data.yaml`` on its own (overrides use bare keys, e.g. ``lookback=12``)."""
+    cfg = load_config("data", fast=fast, overrides=overrides)
+    d = OmegaConf.to_container(cfg, resolve=True)
+    d.pop("fast", None)  # type: ignore[union-attr]
+    return DataConfig(**d)  # type: ignore[arg-type]
+
+
 def validate_data(cfg: DictConfig) -> DataConfig:
     """Validate ``cfg.data`` and return a typed object (raises pydantic.ValidationError with details)."""
     return DataConfig(**OmegaConf.to_container(cfg.data, resolve=True))  # type: ignore[arg-type]

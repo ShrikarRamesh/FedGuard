@@ -69,21 +69,82 @@ def show_config(
 
 # ---------------------------------------------------------------- data (M1)
 @data_app.command("download")
-def data_download(fast: Fast = False) -> None:
-    """Download PhysioNet/CinC 2019 training data and verify file counts."""
-    _not_yet("M1", "fedguard data download")
+def data_download(
+    fast: Fast = False,
+    source: Annotated[str, typer.Option(help="s3 (MD5-verified) or physionet (fallback)")] = "s3",
+    override: Overrides = None,
+) -> None:
+    """Download PhysioNet/CinC 2019 training data (resumable, MD5-checked) and verify file counts."""
+    from fedguard.config import load_data_config
+    from fedguard.data.download import download, verify
+    from fedguard.utils.io import data_dir
+
+    dcfg = load_data_config(fast=fast, overrides=override)
+    raw = data_dir() / dcfg.raw_subdir
+    typer.echo(f"Downloading to {raw} ({'fast subset' if fast else 'full'}) ...")
+    stats = download(
+        raw,
+        subset_per_hospital=dcfg.subset_per_hospital,
+        seed=dcfg.split_seed,
+        source=source,
+        progress=lambda s, i, n: typer.echo(f"  {s}: {i}/{n}"),
+    )
+    typer.echo(f"Transfer: {stats}")
+    expected = None if fast else dcfg.expected_counts
+    counts = verify(raw, expected=expected)
+    if fast:  # the fast subset must contain exactly the requested files
+        for s, c in counts.items():
+            if c < (dcfg.subset_per_hospital or 0):
+                raise typer.BadParameter(f"{s}: only {c} files present after fast download")
+    typer.secho(f"Verified: {counts}", fg="green")
+
+
+def processed_dir(fast: bool, dcfg) -> Path:
+    """Processed data dir; ``--fast`` uses a separate ``<processed>_fast`` dir so it never clobbers real data."""
+    from fedguard.utils.io import data_dir
+
+    return data_dir() / (dcfg.processed_subdir + ("_fast" if fast else ""))
 
 
 @data_app.command("process")
-def data_process(fast: Fast = False, seed: Seed = 42, override: Overrides = None) -> None:
-    """Parse raw .psv files, assign nodes, make patient-level splits, write processed arrays."""
-    _not_yet("M1", "fedguard data process")
+def data_process(
+    fast: Fast = False,
+    workers: Annotated[
+        int | None, typer.Option(help="Parser processes (default: CPUs - 1; 1 = inline)")
+    ] = None,
+    override: Overrides = None,
+) -> None:
+    """Parse raw .psv files, assign strata, make patient-level splits, write processed arrays."""
+    from fedguard.config import load_data_config
+    from fedguard.data.physionet2019 import process
+    from fedguard.utils.io import data_dir
+
+    dcfg = load_data_config(fast=fast, overrides=override)
+    out = processed_dir(fast, dcfg)
+    typer.echo(f"Processing {data_dir() / dcfg.raw_subdir} -> {out}")
+    manifest = process(
+        dcfg, data_dir() / dcfg.raw_subdir, out, workers=workers,
+        progress=lambda i, n: typer.echo(f"  parsed chunk {i}/{n}") if i % 20 == 0 or i == n else None,
+    )  # fmt: skip
+    typer.secho(json.dumps(manifest, indent=2), fg="green")
 
 
 @data_app.command("eda")
-def data_eda(fast: Fast = False) -> None:
-    """Per-node summary tables and plots into results/eda/."""
-    _not_yet("M1", "fedguard data eda")
+def data_eda(fast: Fast = False, override: Overrides = None) -> None:
+    """Per-node summary tables and plots into results/eda/ (results/eda_fast/ with --fast)."""
+    from fedguard.config import load_data_config
+    from fedguard.data.eda import run_eda
+    from fedguard.data.windows import ProcessedData
+    from fedguard.utils.io import results_dir
+
+    dcfg = load_data_config(fast=fast, overrides=override)
+    out = results_dir() / ("eda_fast" if fast else "eda")
+    summary = run_eda(ProcessedData.load(processed_dir(fast, dcfg)), dcfg, out)
+    cols = ["node", "patients", "septic_patients", "septic_patient_rate", "rows", "positive_row_rate"]
+    import pandas as pd
+
+    typer.echo(pd.DataFrame(summary["main"])[cols].to_string(index=False))
+    typer.secho(f"EDA written to {out}", fg="green")
 
 
 # ---------------------------------------------------------------- training (M2-M3)

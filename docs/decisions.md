@@ -12,13 +12,13 @@ Every deviation from `FedGuard_Plan.md` or `CLAUDE_CODE_BUILD_PROMPT.md` is reco
 
 **Fix:** index with `arange(P).unsqueeze(0).expand(B, P)` (and `zeros(B, 1)` for CLS). Verified that the per-sample gradients then have batch dimension B for every parameter and that a DP step completes. A unit test guards this (M2).
 
-## D2. Unit of privacy: patient-level DP instead of window-level "record" DP (Proposed; needs team sign-off before M5)
+## D2. Unit of privacy: patient-level DP instead of window-level "record" DP (Adopted 2026-09-26, approved by the team)
 
 **Spec said:** "Record-level DP-SGD per client", with one training sample per (patient, hour) window.
 
 **Problem:** if the DP "record" is a window, the (ε, δ) guarantee protects **one patient-hour window**, not a patient. A patient contributes on average about 38 windows (up to about 336), and consecutive windows share 23 of 24 hours of data. By group privacy the patient-level guarantee for k windows degrades to about kε (with a much worse δ), so "ε = 3" would be meaningless for a patient. Presenting it as patient protection would violate rule 3 (exact privacy claims).
 
-**Proposed fix:** make the **patient** the unit of privacy. The DP dataset element is a patient. Opacus Poisson-samples *patients* with rate q; each sampled patient contributes **one** window chosen uniformly at random (randomness independent of other patients) from its own stay, and that single per-sample gradient is clipped to C. Every patient contributes at most one clipped gradient of norm ≤ C per step. The standard subsampled-Gaussian RDP analysis therefore holds under add/remove-one-*patient* adjacency. For each fixed draw of the window-selection randomness the bound holds, and Rényi divergence is jointly quasi-convex, so it also holds for the mixture. Then δ < 1/n_i uses n_i = number of training *patients*.
+**Fix (adopted):** make the **patient** the unit of privacy. The DP dataset element is a patient. Opacus Poisson-samples *patients* with rate q; each sampled patient contributes **one** window chosen uniformly at random (randomness independent of other patients) from its own stay, and that single per-sample gradient is clipped to C. Every patient contributes at most one clipped gradient of norm ≤ C per step. The standard subsampled-Gaussian RDP analysis therefore holds under add/remove-one-*patient* adjacency. For each fixed draw of the window-selection randomness the bound holds, and Rényi divergence is jointly quasi-convex, so it also holds for the mixture. Then δ < 1/n_i uses n_i = number of training *patients*.
 
 **Cost:** a DP "epoch" is one expected pass over patients (one window each), so DP runs see fewer windows per epoch than non-DP runs. That is the honest price of patient-level privacy and will show up in the privacy–utility curve.
 
@@ -43,7 +43,7 @@ Patient-level 70/15/15 splits are stratified on "ever septic" **within each hosp
 
 ## D6. Static features (Adopted)
 
-The spec adds `HospAdmTime` (clipped, scaled) to the starter's Age/Gender/ICULOS. Missing Gender or Age is imputed to 0 after scaling, with a mask channel. Age uses a fixed affine scale ((age − 60)/20) that is data-independent, so no leakage.
+The spec adds `HospAdmTime` to the starter's Age/Gender/ICULOS. All static scaling is fixed and data-independent, so there is no leakage: Age (age − 60)/20, Gender as-is, log1p(ICULOS)/5, and HospAdmTime as log1p(clip(−h, 0, 720))/log1p(720). HospAdmTime is missing for some stays, so it gets an extra `HospAdmTime_obs` channel. Missing Age/Gender map to 0. The input has 34 values + 34 masks + 34 deltas + 5 static = **107 channels**.
 
 ## D7. Privacy sweep grid (Adopted)
 
@@ -65,7 +65,20 @@ The plan's risk table suggests Opacus's `DPMultiheadAttention`. Per the build pr
 
 - `aws` CLI is not installed, so the downloader uses pure-Python HTTPS against the public S3 bucket `physionet-open` (anonymous ListObjectsV2 plus GET) with retries, falling back to `https://physionet.org/files/challenge-2019/1.0.0/training/`.
 - `make` is not installed, so `scripts/make.ps1` mirrors every `Makefile` target.
-- The repo is inside OneDrive, so the virtualenv lives outside it (`C:\Users\Shrikar\.venvs\fedguard`). `data/` and `runs/` can be relocated with `FEDGUARD_DATA_DIR` / `FEDGUARD_RUNS_DIR` (see Q2 in `PROGRESS.md`).
+- The repo is inside OneDrive, so the virtualenv lives outside it (`C:\Users\Shrikar\.venvs\fedguard`). **Decided 2026-09-26:** `data/` and `runs/` live at `C:\Users\Shrikar\fedguard-work\{data,runs}`, set by the user-level environment variables `FEDGUARD_DATA_DIR` / `FEDGUARD_RUNS_DIR`. `scripts/make.ps1` picks them up even in older terminals. `results/` (small aggregated outputs) stays in the repo.
+
+## D13. UNK patients are 38.7% of the data; `exclude` kept for the main 4-node runs (Adopted, flagged)
+
+Measured in M1: 15,617 of 40,336 patients have neither `Unit1` nor `Unit2` set (A_UNK 9,522, B_UNK 6,095). A_UNK is septic-rich (10.4% septic patients). The main 4-node federation uses `unk_policy: exclude` as specified, because a unit cannot be invented for these patients. It keeps 24,719 patients (61.3%). Consequences, stated in the report:
+- The "Centralized" upper bound is centralized **over the same 24,719 patients**, not over all 40,336, so the comparison stays like-for-like.
+- `unit/separate` (6 nodes, with A_UNK and B_UNK as their own clients) and `hospital/merge_into_hospital` (2 nodes, all 40,336 patients) are available as ablations; their counts are in `results/eda/`.
+- `merge_into_hospital` is undefined for the unit partition and raises an error rather than assigning UNK patients to an arbitrary unit.
+
+## D14. Processing details from the full data (Adopted)
+
+- Unit assignment uses any row with a non-NaN flag (flags were never contradictory: 0 conflicts).
+- Onset hour = first positive row + 6. The 426 patients positive from their first row are flagged `onset_ambiguous`, and lead-time statistics are reported with and without them.
+- The fast subset is a seeded random sample of 150 files per hospital (seed 42), identical between `download --fast` and `process --fast`. It is so small that some clients have one septic patient, so downstream metrics must return NaN (not crash) when a split has no positives.
 
 ## D12. Library versions (Adopted)
 

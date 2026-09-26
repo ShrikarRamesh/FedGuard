@@ -7,11 +7,11 @@ Only real, reproducible numbers appear here. Anything not yet run says **not run
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Scaffold: package, configs, CLI skeleton, CLAUDE.md, PROGRESS.md, `make test` | **Done** (2026-09-26) |
-| M1 | Data: download, verify, nodes, splits, windows, EDA | Next, waiting on Q2 (data location) |
-| M2 | Models: PatchTST (Opacus-safe), baselines, MC Dropout | not started |
+| M1 | Data: download, verify, nodes, splits, windows, EDA | **Done** (2026-09-26) |
+| M2 | Models: PatchTST (Opacus-safe), baselines, MC Dropout | next |
 | M3 | Centralized + local-only, 3 seeds | not started |
 | M4 | FL engine (sync/async, FedAvg/FedProx) + Flower app + cross-check + deployment scripts | not started |
-| M5 | DP: Opacus per client, uniform/adaptive budgets, accounting, ε sweep, `docs/privacy.md` | not started; needs Q1 (D2) and D3 |
+| M5 | DP: Opacus per client, uniform/adaptive budgets, accounting, ε sweep, `docs/privacy.md` | not started; patient-level DP approved (D2); D3 open |
 | M6 | Alerts, calibration, explanations | not started |
 | M7 | Gradient-inversion attack | not started |
 | M8 | Full experiments + ablations + `fedguard report` | not started |
@@ -70,8 +70,52 @@ Only real, reproducible numbers appear here. Anything not yet run says **not run
 
 ---
 
+## M1: Data (done 2026-09-26)
+
+**Built** (logic moved from `prepare_data.py`, which is removed from the root and kept in git history)
+- `data/download.py`: pure-Python S3 download (32 threads, retries, resumable, **per-file MD5** from S3 ETags), physionet.org fallback, and `verify()` with exact counts.
+- `data/physionet2019.py`: parallel parsing (process pool), causal ffill plus hours-since-measured per patient, unit assignment, and a patient table with onset hour and data-quality flags. Splits are per stratum with order-independent RNGs (D4). Partitions: `unit`, `hospital`, `dirichlet`, with `unk_policy` handling.
+- `data/features.py`: 107-channel layout (34 values + 34 masks + 34 deltas + 5 static) and fixed, data-independent transforms.
+- `data/windows.py`: memory-mapped `ProcessedData`; `NormStats.fit` on measured values of training patients only (D5); `build_client_arrays`; lazy causal `WindowDataset` with vectorised `__getitems__` batching.
+- `data/eda.py`: per-node tables (all three UNK policies), missingness, LOS, prevalence plots.
+- `data/adapters/{mimic_iv,eicu}.py`: documented stubs (layout, cohort, Sepsis-3 derivation) that raise `NotImplementedError`; they never download.
+- CLI: `fedguard data download|process|eda` (all with `--fast`); `make smoke` runs the three steps.
+- Docs: `docs/data.md`; decisions D13 (UNK = 38.7%) and D14 added; D2 marked adopted.
+
+**Commands and results**
+```
+fedguard data download        -> 40,036 downloaded + 300 already present; Verified: {training_setA: 20336, training_setB: 20000}
+fedguard data process         -> 40,336 patients, 1,552,210 rows in 22 s; checks: 0 unit conflicts,
+                                 0 non-monotone labels, 0 non-consecutive ICULOS, 426 onset-ambiguous
+fedguard data eda             -> results/eda/ (9 files)
+.\scripts\make.ps1 smoke      -> fast download + process + EDA in 20 s (190 patients in the 4 nodes)
+.\scripts\make.ps1 test       -> 24 passed in 14.3 s
+```
+
+**Real numbers (main 4-node federation, `unit/exclude`)**
+
+| Node | Patients | Septic | Septic rate | Patient-hours | Positive-hour rate |
+|---|---:|---:|---:|---:|---:|
+| A_MICU | 5,344 | 576 | 10.78% | 204,894 | 2.67% |
+| A_SICU | 5,470 | 222 | 4.06% | 199,156 | 1.08% |
+| B_MICU | 6,923 | 390 | 5.63% | 262,007 | 1.39% |
+| B_SICU | 6,982 | 428 | 6.13% | 274,193 | 1.48% |
+| **All 4** | **24,719** | **1,616** | **6.54%** | **940,250** | **1.63%** |
+
+The full dataset (including UNK) has 40,336 patients, 2,932 septic (7.27%) and 1.80% positive hours, matching the published challenge figures. The synopsis's "18% positives" is wrong by an order of magnitude. The AUPRC reference line is **1.63%**.
+
+**Findings that affect later milestones**
+- UNK is 38.7% of patients (D13). Centralized uses the same 24,719 patients for a like-for-like upper bound.
+- Strong measurement-practice skew across sites (DBP 74% missing in A_MICU vs 10% in B_SICU; HCO3 almost never charted at B). This is genuinely non-IID, and the masks identify the site.
+- The HTML demo's hard-coded node sizes (7,400 / 5,200 / 3,600 / 2,100) are illustrative only. The real sizes are above, and the Streamlit app will use them.
+- `.gitignore` bug fixed: an unanchored `data/` also ignored `src/fedguard/data/`. It is now `/data/`.
+
+**Open issues:** none blocking. D3 (DP-safe normalisation) is resolved in M5.
+
+---
+
 ## Open questions for the team
 
-- **Q1 (D2, blocks M5):** Adopt **patient-level DP** (one random window per Poisson-sampled patient) instead of window-level "record" DP? Window-level ε would not protect a patient. This is recommended.
-- **Q2 (blocks the M1 download):** The repo is in OneDrive. The raw data is 40,336 small `.psv` files, and processed arrays, checkpoints and runs will follow. Keep `data/` and `runs/` in the repo (spec layout, synced by OneDrive), or relocate them with `FEDGUARD_DATA_DIR` / `FEDGUARD_RUNS_DIR` to a non-synced folder such as `C:\Users\Shrikar\fedguard-work\`? Relocating is recommended.
 - **Q3 (D3, M5):** How to handle data-dependent normalisation stats and pos_weight inside DP clients. DP-estimated stats are recommended.
+
+Resolved on 2026-09-26: Q1, patient-level DP adopted (D2); Q2, data and runs moved to `C:\Users\Shrikar\fedguard-work\` (D11).

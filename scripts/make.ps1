@@ -6,6 +6,14 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $Py = if ($env:FEDGUARD_PY) { $env:FEDGUARD_PY } elseif (Test-Path 'C:\Users\Shrikar\.venvs\fedguard\Scripts\python.exe') { 'C:\Users\Shrikar\.venvs\fedguard\Scripts\python.exe' } else { 'python' }
 
+# Pick up user-level data/runs locations even in terminals opened before they were set.
+foreach ($v in 'FEDGUARD_DATA_DIR', 'FEDGUARD_RUNS_DIR') {
+    if (-not [Environment]::GetEnvironmentVariable($v, 'Process')) {
+        $u = [Environment]::GetEnvironmentVariable($v, 'User')
+        if ($u) { [Environment]::SetEnvironmentVariable($v, $u, 'Process') }
+    }
+}
+
 function Invoke-Step([string[]]$CmdArgs) {
     Write-Host "> $Py $($CmdArgs -join ' ')" -ForegroundColor Cyan
     & $Py @CmdArgs
@@ -27,7 +35,12 @@ switch ($Target) {
         Invoke-Step @('-m', 'ruff', 'check', '--fix', 'src', 'tests', 'app')
         Invoke-Step @('-m', 'black', 'src', 'tests', 'app')
     }
-    'smoke' { Invoke-Step @('-m', 'fedguard.cli', 'info') }
+    'smoke' {
+        # End-to-end --fast pipeline; steps are added as milestones land.
+        Invoke-Step @('-m', 'fedguard.cli', 'data', 'download', '--fast')
+        Invoke-Step @('-m', 'fedguard.cli', 'data', 'process', '--fast')
+        Invoke-Step @('-m', 'fedguard.cli', 'data', 'eda', '--fast')
+    }
     'app'   { Invoke-Step @('-m', 'streamlit', 'run', 'app/streamlit_app.py') }
     default { throw "unknown target '$Target' (install, test, test-all, lint, format, smoke, app)" }
 }

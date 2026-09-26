@@ -1,6 +1,7 @@
 # data and experiment outputs (never commit patient data or large artefacts)
-data/
-runs/
+# anchored to the repo root: an unanchored `data/` would also ignore src/fedguard/data/
+/data/
+/runs/
 *.pt
 *.pth
 *.ckpt
@@ -11,6 +12,7 @@ runs/
 # aggregated results: only small files are committed (see results/README.md)
 results/**/*.npy
 results/**/*.pkl
+results/*_fast/
 
 # secrets
 .env
