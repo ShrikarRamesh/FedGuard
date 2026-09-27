@@ -366,6 +366,13 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - AdamW normalises each coordinate's update, so the size of the noise-driven random walk is roughly independent of σ.
   - With about 600k parameters and a clipped signal norm of at most 1, the per-coordinate signal-to-noise ratio stays far below 1 even at ε = 8.
   - If so, this is a property of the recipe (DP-Adam, model size) rather than a code bug.
+- **Update 2026-09-28 00:10:** the extension makes it worse, not better.
+  - Seed 0 adaptive test AUROC falls as ε rises: 0.645 (ε 1), 0.643 (2), 0.640 (3), 0.632 (5), 0.619 (8), 0.598 (16), 0.562 (32).
+  - FedAvg + DP seed 0 follows the same trend: 0.636, 0.629, 0.636, 0.628, 0.602 for ε 1, 2, 3, 5, 8.
+  - Client training losses follow an almost identical path for σ from 32 down to 1.5 (20-merge block means 1.5–2.0, rising from their start). The noise level barely changes training, but σ = 0 (same code path, same Opacus wrapper) reaches 0.757.
+  - This is consistent with the AdamW explanation: in coordinates dominated by noise, the per-coordinate normalisation makes each step about lr in size whatever σ is.
+  - **Diagnostic queued (`dp_diag_sgd`, seed 0, about 75 min):** DP with SGD (momentum 0.9) in place of AdamW; lr ∈ {0.02, 0.1, 0.5} at ε = 8, selected on validation AUPRC; σ = 0 at lr 0.1; ε = 1 at lr 0.1. The option is `privacy.optimizer` (default `adamw`, so existing configs and their hashes are unchanged); tested in `test_dp_sgd_optimizer_option`.
+  - If SGD makes utility rise with ε, the main DP results and the sweep need rerunning with DP-SGD. That is about 10–12 GPU-hours, and the user decides.
 - **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
 
 ## D12. Library versions (Adopted)
