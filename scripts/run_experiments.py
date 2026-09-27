@@ -192,9 +192,12 @@ def acquire_slot(max_jobs: int, poll_s: float = 15.0) -> None:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode())
             os.close(fd)
-        except FileExistsError:
-            if time.time() - lock.stat().st_mtime > 300:  # stale lock from a crashed runner
-                lock.unlink(missing_ok=True)
+        except (FileExistsError, PermissionError):  # Windows: EACCES while another runner is deleting the lock
+            try:
+                if time.time() - lock.stat().st_mtime > 300:  # stale lock from a crashed runner
+                    lock.unlink(missing_ok=True)
+            except OSError:
+                pass
             time.sleep(poll_s)
             continue
         if running_gpu_jobs() < max_jobs:
