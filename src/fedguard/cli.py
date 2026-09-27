@@ -413,6 +413,19 @@ def report(fast: Fast = False) -> None:
 
 
 @app.command()
+def proof() -> None:
+    """Proof-of-compute appendix: docs/proof_of_compute.md + docs/figures/compute_timeline.png from files on disk."""
+    from fedguard.eval.proof import run_proof
+
+    r = run_proof()
+    typer.secho(
+        f"{r['jobs']} jobs; GPU job-hours {r['gpu_job_hours']:.1f}; GPU busy wall-clock {r['gpu_busy_hours']:.1f} h; "
+        f"max concurrent GPU jobs {r['max_concurrency']}\n-> {r['path']}\n-> {r['figure']}",
+        fg="green",
+    )
+
+
+@app.command()
 def export(
     fast: Fast = False,
     alerts_from: Annotated[

@@ -156,7 +156,7 @@ def jobs_posthoc() -> list[list[str]]:
 STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
-JOB_TIMEOUT_S = 4 * 3600  # longest legitimate job (~1 h under contention) x 4
+JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py
 GPU_COMMANDS = {"train", "fl", "attack", "mc-ablation", "mc-predict", "explain", "alerts"}
 
 

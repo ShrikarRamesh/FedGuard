@@ -325,6 +325,16 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
 - **Interpretation:** the channel-mixing patch embedding makes the input far from uniquely determined by one gradient, so even the undefended attack is only partially successful on this model. This is reported as such.
 - **Related (MC-Dropout T ablation, async FL without DP, seed 0):** T ∈ {5, 10, 20, 50} changes the MC-mean ECE only in the 5th decimal (0.1564) and AUROC by +0.002. The MC-mean ECE (0.156) is worse than the deterministic model's (0.113). MC Dropout's value here is the uncertainty gate, not calibration.
 
+## D36. At most 2 concurrent GPU jobs for DP work; ablations paused while DP runs (Adopted by the team, 2026-09-27)
+
+- **Why:** with 3–4 concurrent jobs the 6 GB GPU overflowed. Two FedGuard DP jobs alone use about 5.1 GB. Throughput collapsed: FedAvg + DP seed 2 managed 5 of 40 rounds in 3 h, and FedGuard seed 1 hit the 4 h runner timeout at 156/160 merges. Several earlier hangs have the same likely cause.
+- **Policy:** the remaining FedGuard and FedAvg + DP seeds run with `--max-gpu-jobs 2`. The ablation queue is paused; its FL jobs are full trainings and not lighter.
+- **Order:** after the DP main runs finish, the 6-method, 3-seed table is produced and sent. Then the ε sweep and the ablations run, also capped at 2.
+- **Other changes:**
+  - the runner's job timeout is now 8 h (hangs are handled by `scripts/watchdog.py`);
+  - an exclusive lock makes the "count jobs, then start one" step atomic across runners;
+  - the batched attack is deferred until the GPU is otherwise idle.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

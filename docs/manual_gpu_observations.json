@@ -1,0 +1,23 @@
+[
+  {
+    "time": "2026-09-27 06:38",
+    "used_mib": 5898,
+    "total_mib": 6141,
+    "jobs": 4,
+    "context": "gradient-inversion attack + FedAvg+DP seed 0 + FedGuard seed 0 + 2-node async ablation; near-OOM, the ablation job was stopped (5518 MiB after)"
+  },
+  {
+    "time": "2026-09-27 12:33",
+    "used_mib": 5441,
+    "total_mib": 6141,
+    "jobs": 3,
+    "context": "FedGuard seed 0 rerun + FedAvg+DP seed 2 + batched attack, utilisation 100%; FedAvg+DP seed 2 had made 5/40 rounds in ~3 h; attack stopped (5209 MiB after)"
+  },
+  {
+    "time": "2026-09-27 12:40",
+    "used_mib": 5145,
+    "total_mib": 6141,
+    "jobs": 2,
+    "context": "two FedGuard patient-level DP jobs only (seeds 0 and 1; logical batch 1024, physical 256); basis for the 2-job cap (D36)"
+  }
+]
