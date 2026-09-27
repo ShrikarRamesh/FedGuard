@@ -135,7 +135,8 @@ class FLEngine:
                 target = targets[c]
             setup_dp(cl, target, sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
                      p.get("physical_batch_size"), lr=float(p.get("lr", 5e-4)),
-                     windows_per_patient=int(p.get("windows_per_patient", 1)))  # fmt: skip
+                     windows_per_patient=int(p.get("windows_per_patient", 1)),
+                     optimizer=str(p.get("optimizer", "adamw")), momentum=float(p.get("momentum", 0.9)))  # fmt: skip
             cl.dp.reset_optimizer = bool(p.get("reset_optimizer", False))
             out[c] = {
                 "target_eps": target, "delta": float(p.delta), "noise_multiplier": sigma, "sample_rate": q,

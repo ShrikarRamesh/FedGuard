@@ -106,6 +106,18 @@ def jobs_dp_diag() -> list[list[str]]:
     ]
 
 
+def jobs_dp_diag_sgd() -> list[list[str]]:
+    """D38: is the flat / inverted eps curve an AdamW artefact? Same FedGuard DP pipeline, seed 0, SGD with
+    momentum 0.9 instead of AdamW. lr grid at eps = 8 (selection on validation AUPRC), the sigma = 0 ceiling, and
+    eps = 1 to see whether utility now depends on eps. Diagnostic only; not part of the main results."""
+    base = ["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "dp_diag_sgd", "-o", "eval.mc_dropout=false",
+            "-o", "privacy.optimizer=sgd"]  # fmt: skip
+    j = [base + ["-o", "privacy.epsilon=8.0", "-o", f"privacy.lr={lr}"] for lr in (0.02, 0.1, 0.5)]
+    j += [base + ["-o", "privacy.noise_multiplier_override=0.0", "-o", "privacy.lr=0.1"]]
+    j += [base + ["-o", "privacy.epsilon=1.0", "-o", "privacy.lr=0.1"]]
+    return j
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -153,7 +165,7 @@ def jobs_posthoc() -> list[list[str]]:
     ]
 
 
-STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py

@@ -176,6 +176,25 @@ def test_dp_optimizer_state_reset_each_participation(tiny_scenario, tmp_path):  
     assert steps[0] == steps[1]  # counter restarted, not accumulated across participations
 
 
+def test_dp_sgd_optimizer_option(tiny_scenario, tmp_path):  # noqa: F811
+    """D38: privacy.optimizer=sgd wraps SGD (momentum) in Opacus; the default stays AdamW; momentum resets."""
+    base = {"fl.rounds": 2, "privacy.r_max": 2, "privacy.logical_batch_size": 4, "privacy.local_epochs": 1,
+            "privacy.physical_batch_size": "null", "privacy.reset_optimizer": "true"}  # fmt: skip
+    eng = FLEngine(tiny_scenario, tiny_cfg("fedavg_dp", **base), tmp_path / "a", 0, torch.device("cpu"))
+    assert isinstance(next(iter(eng.clients.values())).dp.optimizer.original_optimizer, torch.optim.AdamW)
+    cfg = tiny_cfg("fedavg_dp", **base, **{"privacy.optimizer": "sgd", "privacy.lr": 0.1})
+    eng = FLEngine(tiny_scenario, cfg, tmp_path / "b", 0, torch.device("cpu"))
+    cl = next(iter(eng.clients.values()))
+    opt = cl.dp.optimizer.original_optimizer
+    assert type(opt) is torch.optim.SGD and opt.defaults["momentum"] == 0.9 and opt.defaults["lr"] == 0.1
+    before = {k: v.clone() for k, v in eng.global_state.items()}
+    out = cl.local_train(eng.global_state)
+    assert any(not torch.equal(out["state"][k], before[k]) for k in before)  # it trains
+    assert all("momentum_buffer" in s for s in opt.state.values())
+    cl.local_train(eng.global_state)  # reset_optimizer clears the momentum buffers before this participation
+    assert eng.budgets[cl.name]["noise_multiplier"] > 0
+
+
 def test_patient_window_dataset_one_window_per_patient(tiny_scenario):  # noqa: F811
     from fedguard.fl.client import PatientWindowDataset
 

@@ -217,7 +217,7 @@ def _zero_grad_samples(model: nn.Module) -> None:
 def setup_dp(
     client: FLClient, target_eps: float | None, noise_multiplier: float, delta: float, logical_batch: int,
     r_max: int, local_epochs: int, max_grad_norm: float, physical_batch: int | None, lr: float,
-    windows_per_patient: int = 1,
+    windows_per_patient: int = 1, optimizer: str = "adamw", momentum: float = 0.9,
 ) -> None:  # fmt: skip
     """Make the client patient-level DP. k = 1: Opacus (Poisson sampling over patients, RDP accountant).
     k > 1: ``PatientDPSGD`` (k windows per sampled patient, per-patient clipping; same accountant)."""
@@ -229,8 +229,13 @@ def setup_dp(
 
     check_delta(delta, client.n_patients)
     q, steps = planned_steps(client.n_patients, logical_batch, local_epochs, r_max)
+    if optimizer not in ("adamw", "sgd"):
+        raise ValueError(f"privacy.optimizer must be adamw or sgd, got {optimizer!r}")
     if windows_per_patient > 1:
         from fedguard.privacy.dp import PatientDPSGD
+
+        if optimizer != "adamw":
+            raise NotImplementedError("k > 1 windows per patient supports AdamW only")
 
         custom = PatientDPSGD(
             model=client.model, arrays=client.train_arrays, lookback=client.lookback, noise_multiplier=noise_multiplier,
@@ -244,7 +249,10 @@ def setup_dp(
     loader = torch.utils.data.DataLoader(
         ds, batch_size=logical_batch, shuffle=False, collate_fn=loops.collate_windows
     )
-    opt = torch.optim.AdamW(client.model.parameters(), lr=lr, weight_decay=client.weight_decay)
+    if optimizer == "sgd":  # D38 diagnostic: update size scales with the privatised gradient (unlike AdamW)
+        opt = torch.optim.SGD(client.model.parameters(), lr=lr, momentum=momentum, weight_decay=client.weight_decay)
+    else:
+        opt = torch.optim.AdamW(client.model.parameters(), lr=lr, weight_decay=client.weight_decay)
     engine = PrivacyEngine(accountant="rdp", secure_mode=False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
