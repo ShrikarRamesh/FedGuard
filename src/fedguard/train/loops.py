@@ -148,12 +148,23 @@ def train_epoch(
     return {"loss": tot / max(n, 1), "steps": steps, "samples": n}
 
 
+# Set by the run drivers to <run dir>/heartbeat; long inference loops touch it so scripts/watchdog.py can tell a
+# slow phase (e.g. MC-Dropout over val + test) from a hung job.
+HEARTBEAT: Path | None = None
+
+
+def _beat(i: int, every: int = 20) -> None:
+    if HEARTBEAT is not None and i % every == 0:
+        HEARTBEAT.touch()
+
+
 @torch.no_grad()
 def predict(model: nn.Module, ds: WindowDataset, device: torch.device, batch_size: int = 2048) -> np.ndarray:
     """Deterministic probabilities (eval mode) for every sample of ``ds`` in order."""
     model.eval()
     out = []
-    for x, m, _ in make_loader(ds, batch_size, shuffle=False):
+    for i, (x, m, _) in enumerate(make_loader(ds, batch_size, shuffle=False)):
+        _beat(i)
         out.append(torch.sigmoid(model(x.to(device), m.to(device))).float().cpu().numpy())
     return np.concatenate(out) if out else np.zeros(0, np.float32)
 
@@ -165,7 +176,8 @@ def predict_mc(
     """MC-Dropout mean and std for every sample of ``ds`` in order."""
     torch.manual_seed(seed)
     means, stds = [], []
-    for x, m, _ in make_loader(ds, batch_size, shuffle=False):
+    for i, (x, m, _) in enumerate(make_loader(ds, batch_size, shuffle=False)):
+        _beat(i)
         mu, sd = mc_predict(model, x.to(device), m.to(device), T=T)
         means.append(mu.float().cpu().numpy())
         stds.append(sd.float().cpu().numpy())

@@ -67,10 +67,9 @@ def run_attack(victim_dir: Path, out_dir: Path, privacy_cfg, n: int = 50, eps_li
     )
     # the largest client needs the least noise for a given eps -> the attacker's best case among clients
     n_big = max(sc.n_train_patients(c) for c in sc.client_names)
-    conditions: list[tuple[str, float | None, float, float | None]] = [
-        ("no_dp", None, 0.0, None),
-        ("clip_only", 1.0, 0.0, None),
-    ]
+    # clip-only is omitted: cosine gradient matching is scale-invariant, so clipping alone changes nothing
+    # (verified: identical to no_dp in a 2-window check, D35)
+    conditions: list[tuple[str, float | None, float, float | None]] = [("no_dp", None, 0.0, None)]
     for e in eps_list:
         conditions.append(
             (f"eps_{e:g}", float(privacy_cfg.max_grad_norm), sigma_for(e, privacy_cfg, n_big), e)

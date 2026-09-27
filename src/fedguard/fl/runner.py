@@ -66,6 +66,7 @@ def run_fl(
     run = create_run(experiment, seed, cfg)
     log = get_logger("fedguard.fl", run.dir / "train.log")
     seed_everything(seed)
+    loops.HEARTBEAT = run.dir / "heartbeat"  # progress signal for scripts/watchdog.py
     t0 = time.time()
     device = loops.get_device(cfg.fl.get("device", "auto"))
     engine = FLEngine(sc, cfg, run.dir, seed, device)

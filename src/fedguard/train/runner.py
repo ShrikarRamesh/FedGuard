@@ -28,6 +28,7 @@ def run_supervised(
     """Train on ``train_client`` (None = pooled) and evaluate on the global validation and test sets."""
     log = get_logger("fedguard.train", run.dir / "train.log")
     seed_everything(run.seed)
+    loops.HEARTBEAT = run.dir / "heartbeat"  # progress signal for scripts/watchdog.py
     t0 = time.time()
     train = sc.dataset(train_client, "train", norm)
     val_own = sc.dataset(train_client, "val", norm)  # early stopping on the training client's own val set

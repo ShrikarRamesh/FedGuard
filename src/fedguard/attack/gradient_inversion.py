@@ -80,6 +80,51 @@ def invert(model: nn.Module, g_obs: torch.Tensor, m: torch.Tensor, shape: tuple[
     return AttackResult(best[1].numpy()[0], best[0], y_true, y_hat)
 
 
+def per_window_grads(
+    model: nn.Module, loss_fn, x: torch.Tensor, m: torch.Tensor, y: torch.Tensor
+) -> torch.Tensor:
+    """Flattened parameter gradient of each window's own loss, [N, P], differentiable w.r.t. ``x``
+    (torch.func vmap over windows; each window is its own batch of one, as in the threat model)."""
+    from torch.func import functional_call, grad, vmap
+
+    params = {n: p.detach() for n, p in model.named_parameters() if p.requires_grad}
+    buffers = {n: b.detach() for n, b in model.named_buffers()}
+
+    def one(prm, xi, mi, yi):
+        return loss_fn(functional_call(model, (prm, buffers), (xi[None], mi[None])), yi[None])
+
+    g = vmap(grad(one), in_dims=(None, 0, 0, 0))(params, x, m, y)
+    return torch.cat([t.reshape(t.shape[0], -1) for t in g.values()], dim=1)
+
+
+def invert_batch(model: nn.Module, g_obs: torch.Tensor, m: torch.Tensor, shape: tuple[int, ...], loss_fn,
+                 iters: int = 300, restarts: int = 1, lr: float = 0.1, seed: int = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # fmt: skip
+    """Batched version of ``invert`` for N windows at once. g_obs [N, P]; returns (x_rec [N, L, C], final match
+    loss [N], inferred labels [N]). Each window is optimised independently (losses are summed, gradients do
+    not mix across windows)."""
+    n = g_obs.shape[0]
+    y_hat = (g_obs[:, -1] < 0).float()  # iDLG label inference per window
+    best_loss = torch.full((n,), float("inf"))
+    best_x = torch.zeros((n, *shape[1:]))
+    gen = torch.Generator().manual_seed(seed)
+    for _ in range(restarts):
+        dummy = torch.randn((n, *shape[1:]), generator=gen).to(g_obs.device).requires_grad_(True)
+        opt = torch.optim.Adam([dummy], lr=lr)
+        sched = torch.optim.lr_scheduler.MultiStepLR(opt, [int(iters * 0.6), int(iters * 0.85)], gamma=0.1)
+        for _ in range(iters):
+            opt.zero_grad()
+            g = per_window_grads(model, loss_fn, dummy, m, y_hat)
+            losses = 1 - nn.functional.cosine_similarity(g, g_obs, dim=1)
+            losses.sum().backward()
+            opt.step()
+            sched.step()
+        final = losses.detach().cpu()
+        better = final < best_loss
+        best_loss = torch.where(better, final, best_loss)
+        best_x[better] = dummy.detach().cpu()[better]
+    return best_x.numpy(), best_loss.numpy(), y_hat.cpu().numpy()
+
+
 def reconstruction_metrics(x_true: np.ndarray, x_rec: np.ndarray) -> dict[str, float]:
     """Pearson r per vital (non-constant true series) and MSE over the vital value channels."""
     rs = {}
@@ -99,20 +144,24 @@ def reconstruction_metrics(x_true: np.ndarray, x_rec: np.ndarray) -> dict[str, f
 
 def attack_condition(model: nn.Module, windows: list[tuple[np.ndarray, np.ndarray, float]], pos_weight: float,
                      clip: float | None, sigma: float, device: torch.device, iters: int, restarts: int,
-                     seed: int) -> list[dict]:  # fmt: skip
-    """Run the attack on each (x, mask, y) window under one condition."""
+                     seed: int, chunk: int = 10) -> list[dict]:  # fmt: skip
+    """Run the attack on each (x, mask, y) window under one condition (windows inverted in batches)."""
     loss_fn = make_loss("bce", pos_weight)
     model.eval()
     out = []
-    for k, (x, m, y) in enumerate(windows):
-        xt = torch.from_numpy(x[None]).to(device)
-        mt = torch.from_numpy(m[None]).to(device)
-        yt = torch.tensor([y], device=device)
-        gen = torch.Generator().manual_seed(seed * 1000 + k)
-        g_obs = observed_gradient(model, xt, mt, yt, loss_fn, clip, sigma, gen)
-        res = invert(model, g_obs, mt, tuple(xt.shape), loss_fn, iters=iters, restarts=restarts, seed=seed * 1000 + k,
-                     y_true=float(y))  # fmt: skip
-        met = reconstruction_metrics(x, res.x_rec)
-        out.append({"k": k, **met, "label_true": float(y), "label_inferred": res.label_inferred,
-                    "match_loss": res.loss, "x_rec_vitals": res.x_rec[:, VITAL_IDX].tolist()})  # fmt: skip
+    for s in range(0, len(windows), chunk):
+        part = windows[s : s + chunk]
+        xt = torch.from_numpy(np.stack([w[0] for w in part])).to(device)
+        mt = torch.from_numpy(np.stack([w[1] for w in part])).to(device)
+        g_obs = torch.stack([
+            observed_gradient(model, xt[i : i + 1], mt[i : i + 1], torch.tensor([part[i][2]], device=device), loss_fn,
+                              clip, sigma, torch.Generator().manual_seed(seed * 1000 + s + i))
+            for i in range(len(part))
+        ])  # fmt: skip
+        x_rec, losses, y_hat = invert_batch(model, g_obs, mt, tuple(xt.shape), loss_fn, iters=iters, restarts=restarts,
+                                            seed=seed * 1000 + s)  # fmt: skip
+        for i, (x, _, y) in enumerate(part):
+            met = reconstruction_metrics(x, x_rec[i])
+            out.append({"k": s + i, **met, "label_true": float(y), "label_inferred": float(y_hat[i]),
+                        "match_loss": float(losses[i]), "x_rec_vitals": x_rec[i][:, VITAL_IDX].tolist()})  # fmt: skip
     return out

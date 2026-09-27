@@ -19,7 +19,7 @@ import psutil
 
 from fedguard.utils.io import runs_dir
 
-PROGRESS = ("events.jsonl", "metrics.csv", "train.log", "meta.json")
+PROGRESS = ("events.jsonl", "metrics.csv", "train.log", "meta.json", "heartbeat")
 
 
 def check(stale_s: float) -> None:

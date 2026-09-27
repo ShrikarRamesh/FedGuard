@@ -10,6 +10,7 @@ Wrappers: scripts/run_all_main.{ps1,sh}, scripts/run_ablations.{ps1,sh}.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -145,7 +146,7 @@ def jobs_ablations() -> list[list[str]]:
 def jobs_posthoc() -> list[list[str]]:
     """Analyses of finished runs: attack on FedAvg seed 0, explanations, MC-Dropout T ablation (D30 model)."""
     return [
-        ["attack", "-e", "fedavg", "--seed", "0"],
+        ["attack", "-e", "fedavg", "--seed", "0", "--n", "30", "--iters", "300", "--restarts", "2"],
         ["explain", "-e", "async_nodp", "--seeds", "0"],
         ["explain", "-e", "fedguard", "--seeds", "0"],
         ["mc-ablation", "-e", "async_nodp", "--seeds", "0"],
@@ -174,14 +175,52 @@ def running_gpu_jobs() -> int:
     return sum(1 for pid, ppid in jobs.items() if ppid not in jobs)
 
 
-def wait_for_slot(max_jobs: int, poll_s: float = 30.0) -> None:
-    while running_gpu_jobs() >= max_jobs:
+def _slot_lock() -> Path:
+    from fedguard.utils.io import runs_dir
+
+    return runs_dir() / "_slots.lock"
+
+
+def acquire_slot(max_jobs: int, poll_s: float = 15.0) -> None:
+    """Atomically wait for a free GPU slot: an exclusive lock file serialises "count jobs, then start one" across
+    all runner processes (two runners checking at the same moment used to both launch). The caller must start its
+    job and then call ``release_slot`` once the new process is visible."""
+    lock = _slot_lock()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+        except FileExistsError:
+            if time.time() - lock.stat().st_mtime > 300:  # stale lock from a crashed runner
+                lock.unlink(missing_ok=True)
+            time.sleep(poll_s)
+            continue
+        if running_gpu_jobs() < max_jobs:
+            return  # keep holding the lock until the job has started
+        lock.unlink(missing_ok=True)
         time.sleep(poll_s)
+
+
+def _job_visible(pid: int) -> bool:
+    """True once the started process (or its venv-launched child) shows ``fedguard.cli`` in its command line."""
+    import psutil
+
+    try:
+        p = psutil.Process(pid)
+        return any("fedguard.cli" in " ".join(q.cmdline()) for q in [p, *p.children(recursive=True)])
+    except psutil.Error:
+        return False
+
+
+def release_slot() -> None:
+    _slot_lock().unlink(missing_ok=True)
 
 
 def run_job(args: list[str], fast: bool, log_dir: Path, max_jobs: int = 3) -> tuple[list[str], int, float]:
     if not fast:
-        wait_for_slot(max_jobs)
+        acquire_slot(max_jobs)
     cmd = [sys.executable, "-m", "fedguard.cli", *args, *(["--fast"] if fast else [])]
     name = "_".join(a.replace("/", "-").replace("=", "-")[:24] for a in args if not a.startswith("-"))[:120]
     log = log_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{name}.log"
@@ -189,9 +228,16 @@ def run_job(args: list[str], fast: bool, log_dir: Path, max_jobs: int = 3) -> tu
     with log.open("w", encoding="utf-8") as f:
         f.write(" ".join(cmd) + "\n")
         f.flush()
+        proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT)
+        if not fast:  # hold the slot lock until the new job is visible to other runners' job counts
+            deadline = time.time() + 60
+            while time.time() < deadline and proc.poll() is None and not _job_visible(proc.pid):
+                time.sleep(1)
+            release_slot()
         try:  # a job that hangs (e.g. after a CUDA OOM in another process) must not hold a GPU slot forever
-            rc = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=JOB_TIMEOUT_S).returncode
+            rc = proc.wait(timeout=JOB_TIMEOUT_S)
         except subprocess.TimeoutExpired:
+            proc.kill()
             f.write(f"\nTIMEOUT after {JOB_TIMEOUT_S} s\n")
             rc = 124
     return args, rc, time.time() - t0

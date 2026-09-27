@@ -301,15 +301,29 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
 |---|---|---|
 | AdamW state carried across rounds (as in D17) | 0.723 | 0.55 → 0.52 → 0.66 → 0.68 |
 | carried state, lr 1e-4 | 0.666 | rises to 0.61, then decays to 0.53 |
-| **AdamW state reset every participation** | **0.757 (0.730–0.783)** | 0.55 → 0.63 → … → 0.73, steady |
+| carried state, clipping effectively off (C = 1000) | 0.748 | — |
+| **AdamW state reset every participation** (C = 1) | **0.757 (0.730–0.783)** | 0.55 → 0.63 → … → 0.73, steady |
 | reference: async FL without DP, same public normalisation | 0.753 | — |
 
+- Carried state and clipping interact: removing either one largely restores training. The reset alone reaches the reference while keeping C = 1, and clipping is required for DP, so the fix is the reset and C stays at 1.
 - **Fix:** `privacy.reset_optimizer: true` (default in `configs/privacy/uniform.yaml`). Resetting optimizer state touches no data, so the DP guarantee (docs/privacy.md) is unchanged.
 - **Consequences:**
   - Every DP result produced before the fix mismeasured the cost of privacy: FedGuard, FedAvg + DP, the ε sweep and extension, and the DP alert results in D29/D30. That includes the monotonic degradation in D31/D32. These runs are archived in `runs/_superseded/pre_optimizer_reset/` and excluded from all reports.
   - The DP hyperparameter selection (D28) and the gradient-norm analysis (D26) were done on affected models. Their conclusions are revisited after the rerun.
   - Everything is rerun with the fix: FedGuard and FedAvg + DP (3 seeds each), the full ε sweep (3 seeds), the large-ε extension (seed 0), and the DP budget-rule ablations.
 - **Lesson** (kept in CLAUDE.md): always run a σ = 0 control of a DP pipeline against the equivalent non-DP pipeline before trusting any privacy–utility curve.
+
+## D35. Gradient-inversion attack: batched, sized to fit, clip-only dropped (Adopted)
+
+- **Why the change:** the first full attack (50 windows × 5 conditions × 3 restarts × 400 steps, one window at a time) hit the 4-hour job timeout at about 0.6 s per double-backward step on the shared GPU.
+- **Batching:** the attack now optimises windows in batches. `per_window_grads` uses `torch.func` vmap(grad) to give each window its own batch-of-one gradient, differentiable with respect to the dummy inputs. It is tested equal to the per-window loop, and windows do not interact. This makes it about 18× faster.
+- **Final size:** 30 test windows (half from septic hours), 300 Adam steps, 2 restarts, conditions no-DP and DP at ε ∈ {1, 3, 8}.
+- **Clip-only dropped:** cosine gradient matching is scale-invariant, so clipping alone cannot change the attack. It was verified identical to no-DP in a 2-window check.
+- **2-window check with full-length optimisation** (seed 0, FedAvg victim):
+  - no DP: gradient matched almost perfectly (1 − cos = 0.004 / 0.010), but vitals were only partially reconstructed (Pearson r = 0.33 / 0.20); labels recovered 2/2;
+  - DP at ε = 1, 3, 8: matching fails (1 − cos ≈ 0.93), r ≈ 0, label inference 1/2 (chance).
+- **Interpretation:** the channel-mixing patch embedding makes the input far from uniquely determined by one gradient, so even the undefended attack is only partially successful on this model. This is reported as such.
+- **Related (MC-Dropout T ablation, async FL without DP, seed 0):** T ∈ {5, 10, 20, 50} changes the MC-mean ECE only in the 5th decimal (0.1564) and AUROC by +0.002. The MC-mean ECE (0.156) is worse than the deterministic model's (0.113). MC Dropout's value here is the uncertainty gate, not calibration.
 
 ## D12. Library versions (Adopted)
 
