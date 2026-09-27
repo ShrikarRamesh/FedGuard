@@ -335,6 +335,25 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - an exclusive lock makes the "count jobs, then start one" step atomic across runners;
   - the batched attack is deferred until the GPU is otherwise idle.
 
+## D37. Two concurrent DP trainings stall the GPU; finishing crashed runs from their checkpoint (Adopted, 2026-09-27)
+
+- **What happened:** at 14:39 the watchdog killed the FedGuard seed-0 rerun and seed-1 rerun after about 2 h with no progress. From 12:40 the two DP FedGuard jobs held 5.3 of 6.1 GB at 100% utilisation but made no updates at all; the seed-0 rerun was at 84/160.
+  - A single DP job alone runs normally: FedAvg + DP seed 2 finished 21 rounds in its first ~7 min.
+  - Most likely cause: WDDM paging VRAM to system memory once two DP jobs (per-sample gradients at physical batch 256) share the 6 GB card. This is the same pattern as the earlier crawls (D36).
+- **Policy change:** DP trainings now run **one at a time**; the 2-job cap of D36 is not enough. Inference-only jobs (evaluation, `mc-predict`, alerts) may share the GPU with one DP training.
+- **Finalizing instead of retraining:** the earlier FedGuard seed-0 (`20260927-060327_0`) and seed-1 (`20260927-075956_1`) runs had finished training normally. Each has a `done` event (seed 0: 158 merges; seed 1: 156 merges, with all four clients budget-exhausted) and a `best.pt` written by the training process. Their processes were then killed during the post-training MC-Dropout evaluation (by the watchdog, and by the 4 h runner timeout).
+  - New command `fedguard fl finalize <run_dir>` runs the **same** post-training code as `run_fl` (shared `_evaluate_and_finish`) on the saved `best.pt`, in the same run directory.
+  - The engine result is rebuilt from `events.jsonl`: evals, simulated time, versions, bytes, best validation AUPRC, per-client participations (dispatches) and budgets. Each client's ε is recomputed exactly with the RDP accountant from its logged noise multiplier, sample rate and participations; the recomputation must match the logged value to 1e-5 or finalize refuses.
+  - The config hash must match `meta.json`. Only async runs with the standard patient-level accountant are supported.
+- **Guarantees:**
+  - Tested (`test_finalize_reproduces_post_training_eval`, with and without DP): after deleting `DONE`, `metrics.json`, `summary.json` and the predictions of a completed run, finalize reproduces the predictions bit-for-bit, the val/test metrics, the per-client summary and ε exactly.
+  - The only lossy field is `sim_time` and the eval times, which `events.jsonl` rounds to 1e-4 simulated seconds.
+- **Traceability:**
+  - Finalized runs carry `finalized_from_checkpoint` in `metrics.json` and `summary.json`, with the training and evaluation wall-clock times split.
+  - Their peak GPU memory is recorded as `peak_gpu_mem_mib_finalize`, not as the training peak.
+  - The proof-of-compute appendix shows each finalized run as a training segment plus a separate finalize segment.
+- **Other run directories:** the killed partial reruns (`fedguard/20260927-094159_0`, `fedguard/20260927-123419_1`, and the partial `fedavg_dp/*_2` directories) have no `DONE` and are excluded from all results. They stay in `runs/` as evidence and appear as killed runs in the appendix.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

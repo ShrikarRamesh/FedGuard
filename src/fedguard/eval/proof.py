@@ -21,7 +21,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,8 @@ SUCCESS_MARKERS = {
 }
 STATUS_COLORS = {
     "done": "#2E7D5B",
+    "done (finalized)": "#6FAF8F",
+    "training done; eval killed": "#D08C3A",
     "running": "#1F6E8C",
     "killed/failed": "#C8413A",
     "timeout": "#B8790F",
@@ -77,6 +79,14 @@ class Job:
     @property
     def gpu(self) -> bool:
         return not self.device.startswith("CPU")
+
+
+def _finalized(d: Path) -> dict[str, float] | None:
+    """Timing split of a run finished by ``fedguard fl finalize`` (D37), else None."""
+    try:
+        return json.loads((d / "metrics.json").read_text(encoding="utf-8")).get("finalized_from_checkpoint")
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def _pid_alive(pid: int | None) -> bool:
@@ -166,6 +176,13 @@ def collect_run_dirs(root: Path) -> list[Job]:
             status, basis = "killed/failed", "last file write"
         if superseded:
             status = f"superseded ({'done' if status == 'done' else 'killed/failed'})"
+        fin = _finalized(d)
+        if status == "done" and fin is not None:  # D37: training process died in evaluation; finished later
+            t_end = start + timedelta(seconds=fin["training_wall_s"])
+            jobs.append(Job(name, seed, start, t_end, "training done; eval killed", "events.jsonl 'done' wall time",
+                            device, "run dir", detail, {}, fast=rel.parts[0].endswith("_fast")))  # fmt: skip
+            start, basis = end - timedelta(seconds=fin["eval_wall_s"]), "DONE marker (fl finalize, D37)"
+            status = "done (finalized)"
         jobs.append(Job(name, seed, start, end, status, basis, device, "run dir", detail, metrics,
                         fast=rel.parts[0].endswith("_fast")))  # fmt: skip
     return jobs

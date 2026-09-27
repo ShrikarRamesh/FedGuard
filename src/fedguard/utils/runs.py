@@ -86,14 +86,15 @@ class Run:
     def done(self) -> bool:
         return (self.dir / DONE_MARKER).exists()
 
-    def mark_done(self, summary: dict[str, Any] | None = None) -> None:
-        """Mark the run complete; optionally write a final ``summary.json`` (adds this process's peak GPU memory)."""
+    def mark_done(self, summary: dict[str, Any] | None = None, gpu_key: str = "peak_gpu_mem_mib") -> None:
+        """Mark the run complete; optionally write a final ``summary.json`` (adds this process's peak GPU memory
+        under ``gpu_key``)."""
         if summary is not None:
             try:
                 import torch
 
                 if torch.cuda.is_available():
-                    summary["peak_gpu_mem_mib"] = round(torch.cuda.max_memory_allocated() / 2**20, 1)
+                    summary[gpu_key] = round(torch.cuda.max_memory_allocated() / 2**20, 1)
             except ImportError:
                 pass
             write_json(self.dir / "summary.json", summary)

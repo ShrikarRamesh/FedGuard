@@ -264,6 +264,19 @@ def fl_run(
         _echo_result(run_fl(sc, cfg, s, exp))
 
 
+@fl_app.command("finalize")
+def fl_finalize(
+    run_dir: Annotated[Path, typer.Argument(help="In-house FL run dir whose training finished but has no DONE")],
+) -> None:
+    """Run the post-training evaluation of a run that finished training but died before writing DONE (D37)."""
+    from omegaconf import OmegaConf
+
+    from fedguard.fl.runner import finalize_fl
+
+    cfg = OmegaConf.load(run_dir / "config.yaml")
+    _echo_result(finalize_fl(run_dir, _scenario(cfg, bool(cfg.get("fast", False))), cfg))
+
+
 @fl_app.command("eval-checkpoints")
 def fl_eval_checkpoints(
     run_dir: Annotated[Path, typer.Argument(help="Flower run dir (contains config.json + checkpoints/)")],

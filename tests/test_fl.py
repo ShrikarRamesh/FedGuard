@@ -150,3 +150,40 @@ def test_fl_runner_writes_artifacts(tiny_scenario, tmp_path):
         "checkpoints/best.pt",
     ):
         assert (run_dir / f).exists(), f
+
+
+@pytest.mark.parametrize("exp", ["fedguard_async_nodp", "fedguard"])
+def test_finalize_reproduces_post_training_eval(tiny_scenario, tmp_path, exp):
+    """D37: a run that died after training can be finished from events.jsonl + best.pt, with identical outputs."""
+    from omegaconf import OmegaConf
+
+    from fedguard.fl.runner import finalize_fl, run_fl
+    from fedguard.utils.io import read_json
+
+    cfg = tiny_cfg(exp, **{"fl.total_updates": 6, "eval.mc_dropout": "true", "model.mc_dropout_T": 3,
+                           "eval.n_boot": 20})  # fmt: skip
+    m = run_fl(tiny_scenario, cfg, 0, "unit_fin", resume=False)
+    run_dir = next((tmp_path / "runs" / "unit_fin").iterdir())
+    ref = {f: dict(np.load(run_dir / f)) for f in ("preds_val.npz", "preds_test.npz")}
+    ref_summary = read_json(run_dir / "summary.json")
+    for f in ("DONE", "metrics.json", "summary.json", "preds_val.npz", "preds_test.npz"):  # simulate a crash
+        (run_dir / f).unlink()
+    m2 = finalize_fl(run_dir, tiny_scenario, OmegaConf.load(run_dir / "config.yaml"))
+    assert (run_dir / "DONE").exists()
+    for f, arrs in ref.items():
+        new = np.load(run_dir / f)
+        for k, v in arrs.items():
+            np.testing.assert_array_equal(new[k], v, err_msg=f"{f}:{k}")
+    same = lambda a, b: json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)  # NaN-safe  # noqa: E731
+    assert same(m2["test"], m["test"]) and same(m2["val"], m["val"])
+    for k in ("versions", "bytes_total", "best_val_auprc", "clients", "budgets"):
+        assert same(m2["fl"][k], m["fl"][k]), k
+    # events.jsonl stores simulated times rounded to 1e-4 s
+    assert m2["fl"]["sim_time"] == pytest.approx(m["fl"]["sim_time"], abs=1e-4)
+    strip = lambda evs: [{k: v for k, v in e.items() if k != "t"} for e in evs]  # noqa: E731
+    assert same(strip(m2["fl"]["evals"]), strip(m["fl"]["evals"]))
+    s = read_json(run_dir / "summary.json")
+    assert s["finalized_from_checkpoint"] and "peak_gpu_mem_mib" not in s
+    assert s["eps"] == ref_summary["eps"] and s["test_auprc"] == ref_summary["test_auprc"]
+    with pytest.raises(FileExistsError):
+        finalize_fl(run_dir, tiny_scenario, OmegaConf.load(run_dir / "config.yaml"))
