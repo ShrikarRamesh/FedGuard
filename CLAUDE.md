@@ -30,6 +30,7 @@ Correctness, honesty and reproducibility matter more than speed. A smaller syste
 
 ### Library-specific rules learned the hard way
 - **Opacus + `nn.Embedding`:** never index an embedding with a bare `arange(P)`. Opacus treats the index tensor's first dim as the batch dim and `optimizer.step()` crashes. Always index with a batch-expanded `[B, P]` id tensor. Verified with opacus 1.6.0 / torch 2.14 (decision D1).
+- **DP sanity control:** before trusting any privacy–utility curve, run the DP pipeline with noise multiplier 0 (`privacy.noise_multiplier_override=0.0`) and compare it with the equivalent non-DP run. D34: carrying AdamW state across FL rounds silently broke every DP result until this control exposed it. Reset optimizer state every participation.
 - Check the **installed** version of Flower, Opacus, Captum and Streamlit and read its source/docs before writing code against it. Versions are recorded in `PROGRESS.md`.
 - Code must run on Linux and Windows: `pathlib` everywhere, `num_workers=0` fallback on Windows, no shell tricks inside Python.
 

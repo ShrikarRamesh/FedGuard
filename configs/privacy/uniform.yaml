@@ -12,6 +12,7 @@ physical_batch_size: 256 # BatchMemoryManager chunk (fits the 6 GB GPU)
 local_epochs: 5          # patient-epochs per participation
 r_max: 40                # max participations; noise calibrated for local_epochs x r_max patient-epochs
 lr: 5.0e-4               # AdamW on privatised gradients (post-processing; D17)
+reset_optimizer: true    # fresh AdamW state each participation (D34: carried state destabilised DP training)
 pos_weight: 10.0         # fixed a-priori hyperparameter, not computed from private data (D3)
 
 _fast:

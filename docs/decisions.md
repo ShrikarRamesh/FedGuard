@@ -291,6 +291,26 @@ The first LightGBM baseline stopped after **1 tree** (test AUROC 0.722). With `e
   A tuned tree ensemble on hand-crafted features matches the transformer's AUROC; PatchTST leads only in AUPRC.
 - **Implication:** the choice of a neural model in FedGuard is justified by what the system needs (gradient-based FedAvg/FedProx, DP-SGD, MC-Dropout uncertainty, Integrated Gradients), not by a large accuracy advantage. The report says this explicitly.
 
+## D34. Root cause of the DP results: optimizer state carried across rounds. Fixed; all DP runs rerun (Adopted; resolves D32)
+
+D17 kept each DP client's AdamW state (first and second moments) across participations, while every participation starts from a *different* global model. The moments accumulated on other weights were applied to the new ones. The non-DP path resets the optimizer each round and was unaffected.
+
+Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, lr 5e-4, identical pipeline otherwise):
+
+| Configuration | Test AUROC (95% CI) | Validation AUROC over training |
+|---|---|---|
+| AdamW state carried across rounds (as in D17) | 0.723 | 0.55 → 0.52 → 0.66 → 0.68 |
+| carried state, lr 1e-4 | 0.666 | rises to 0.61, then decays to 0.53 |
+| **AdamW state reset every participation** | **0.757 (0.730–0.783)** | 0.55 → 0.63 → … → 0.73, steady |
+| reference: async FL without DP, same public normalisation | 0.753 | — |
+
+- **Fix:** `privacy.reset_optimizer: true` (default in `configs/privacy/uniform.yaml`). Resetting optimizer state touches no data, so the DP guarantee (docs/privacy.md) is unchanged.
+- **Consequences:**
+  - Every DP result produced before the fix mismeasured the cost of privacy: FedGuard, FedAvg + DP, the ε sweep and extension, and the DP alert results in D29/D30. That includes the monotonic degradation in D31/D32. These runs are archived in `runs/_superseded/pre_optimizer_reset/` and excluded from all reports.
+  - The DP hyperparameter selection (D28) and the gradient-norm analysis (D26) were done on affected models. Their conclusions are revisited after the rerun.
+  - Everything is rerun with the fix: FedGuard and FedAvg + DP (3 seeds each), the full ε sweep (3 seeds), the large-ε extension (seed 0), and the DP budget-rule ablations.
+- **Lesson** (kept in CLAUDE.md): always run a σ = 0 control of a DP pipeline against the equivalent non-DP pipeline before trusting any privacy–utility curve.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

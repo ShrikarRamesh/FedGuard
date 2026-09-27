@@ -158,6 +158,24 @@ def test_patient_dpsgd_accounting(tiny_scenario, tmp_path):  # noqa: F811
         assert res.client_summary[c]["eps"] <= eng.budgets[c]["target_eps"] + 1e-9
 
 
+def test_dp_optimizer_state_reset_each_participation(tiny_scenario, tmp_path):  # noqa: F811
+    """D34: with reset_optimizer, AdamW state after a participation reflects only that participation's steps."""
+    cfg = tiny_cfg(
+        "fedavg_dp",
+        **{"fl.rounds": 2, "privacy.r_max": 2, "privacy.logical_batch_size": 4, "privacy.local_epochs": 1,
+           "privacy.physical_batch_size": "null", "privacy.reset_optimizer": "true"},
+    )  # fmt: skip
+    eng = FLEngine(tiny_scenario, cfg, tmp_path, 0, torch.device("cpu"))
+    cl = next(iter(eng.clients.values()))
+    assert cl.dp.reset_optimizer
+    steps = []
+    for _ in range(2):
+        cl.local_train(eng.global_state)
+        st = cl.dp.optimizer.original_optimizer.state
+        steps.append(max(float(s["step"]) for s in st.values()))
+    assert steps[0] == steps[1]  # counter restarted, not accumulated across participations
+
+
 def test_patient_window_dataset_one_window_per_patient(tiny_scenario):  # noqa: F811
     from fedguard.fl.client import PatientWindowDataset
 
