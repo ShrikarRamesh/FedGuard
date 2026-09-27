@@ -66,9 +66,12 @@ class Job:
     detail: str = ""
     metrics: dict[str, Any] = field(default_factory=dict)
     fast: bool = False
+    end_known: bool = True
 
     @property
     def hours(self) -> float:
+        if not self.end_known:
+            return float("nan")
         return max((self.end - self.start).total_seconds(), 0.0) / 3600
 
     @property
@@ -190,8 +193,16 @@ def collect_queue_logs(root: Path) -> list[Job]:
             status = "no success marker"
         mseed = re.search(r"--seeds? (\S+)", args)
         seed = mseed.group(1) if mseed else "-"
-        jobs.append(Job(f"{cmd} {args}".strip(), seed, start, end, status, "log file mtime", "GPU (runner job)", "queue log",
-                        fast="--fast" in args))  # fmt: skip
+        # a runner log only gains lines when the job writes output; a job killed before writing anything leaves just the
+        # command line, so its end time is not recorded anywhere -> unknown, excluded from totals (never shown as 0 h)
+        end_known = len([ln for ln in text.splitlines() if ln.strip()]) > 1
+        basis = (
+            "log file mtime"
+            if end_known
+            else "unknown (log holds only the command; killed before any output)"
+        )
+        jobs.append(Job(f"{cmd} {args}".strip(), seed, start, end, status, basis, "GPU (runner job)", "queue log",
+                        fast="--fast" in args, end_known=end_known))  # fmt: skip
     return jobs
 
 
@@ -299,8 +310,9 @@ def run_proof(out_md: Path | None = None) -> dict[str, Any]:
     jobs = [j for j in all_jobs if not j.fast]
     fast = [j for j in all_jobs if j.fast]
     gpu_jobs = [j for j in jobs if j.gpu]
-    iv = [(j.start, j.end) for j in gpu_jobs]
-    job_hours = sum(j.hours for j in gpu_jobs)
+    unknown = [j for j in gpu_jobs if not j.end_known]
+    iv = [(j.start, j.end) for j in gpu_jobs if j.end_known]
+    job_hours = sum(j.hours for j in gpu_jobs if j.end_known)
     busy_hours = union_hours(iv)
     by_status = pd.Series([j.status for j in gpu_jobs]).value_counts().to_dict()
     hours_by_status = (
@@ -319,7 +331,7 @@ def run_proof(out_md: Path | None = None) -> dict[str, Any]:
     for j in sorted(jobs, key=lambda j: j.start):
         rows.append({
             "run": j.name, "seed": j.seed, "config": j.detail, "start": j.start.strftime("%Y-%m-%d %H:%M"),
-            "end": j.end.strftime("%Y-%m-%d %H:%M"), "end basis": j.end_basis, "wall clock (h)": round(j.hours, 2),
+            "end": j.end.strftime("%Y-%m-%d %H:%M"), "end basis": j.end_basis, "wall clock (h)": round(j.hours, 2) if j.end_known else "unknown",
             "status": j.status, "device": j.device,
             "test AUROC": round(j.metrics["test_auroc"], 4) if "test_auroc" in j.metrics else "",
             "test AUPRC": round(j.metrics["test_auprc"], 4) if "test_auprc" in j.metrics else "",
@@ -342,6 +354,8 @@ def run_proof(out_md: Path | None = None) -> dict[str, Any]:
         "and superseded ones. Jobs that shared the GPU are each counted in full.",
         f"- **GPU busy wall-clock: {busy_hours:.1f} h.** This is the union of GPU job intervals, i.e. time during which at least one job was running.",
         f"- Maximum number of GPU jobs running at the same time: **{max_concurrency(iv)}**.",
+        f"- GPU jobs with **unknown duration** (excluded from the totals above): {len(unknown)}"
+        + (" (" + "; ".join(f"{j.name}, started {j.start:%Y-%m-%d %H:%M}" for j in unknown) + ")" if unknown else "") + ".",
         "- GPU jobs by status: " + ", ".join(f"{k}: {v} ({hours_by_status.get(k, 0):.1f} h)" for k, v in by_status.items()) + ".",
         "- GPU: " + ", ".join(sorted({j.device for j in gpu_jobs if j.device and not j.device.startswith('GPU (')})) + ".",
         "",
