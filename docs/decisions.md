@@ -355,6 +355,19 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - The proof-of-compute appendix shows each finalized run as a training segment plus a separate finalize segment.
 - **Other run directories:** the killed partial reruns (`fedguard/20260927-094159_0`, `fedguard/20260927-123419_1`, and the partial `fedavg_dp/*_2` directories) have no `DONE` and are excluded from all results. They stay in `runs/` as evidence and appear as killed runs in the appendix.
 
+## D38. Open issue: the post-fix privacy–utility curve is flat for ε ∈ [1, 8] (Under investigation, 2026-09-27)
+
+- **Observation:** with the optimizer-reset fix (D34), FedGuard's test AUROC is about 0.59–0.65 at every ε from 1 to 8, with both budget rules.
+  - It tracks the seed, not ε: seed 0 ≈ 0.62–0.645, seeds 1 and 2 ≈ 0.59–0.62.
+  - Within each seed the best checkpoint is almost always at the same version (seed 0: v100/v112; seed 1: v148; seed 2: v128).
+  - For seed 0 it even declines slightly as ε rises (0.645 → 0.619).
+- **Controls:** DP with σ = 0 (clip C = 1, same recipe) reaches 0.757, and the non-DP pipeline with public normalisation reaches 0.753 ± 0.009. So the loss is caused by the noise, but it does not shrink as the noise falls from σ ≈ 26 (ε = 1) to σ ≈ 4 (ε = 8).
+- **Leading hypothesis (unverified):**
+  - AdamW normalises each coordinate's update, so the size of the noise-driven random walk is roughly independent of σ.
+  - With about 600k parameters and a clipped signal norm of at most 1, the per-coordinate signal-to-noise ratio stays far below 1 even at ε = 8.
+  - If so, this is a property of the recipe (DP-Adam, model size) rather than a code bug.
+- **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

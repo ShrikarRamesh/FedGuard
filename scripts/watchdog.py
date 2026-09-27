@@ -36,15 +36,18 @@ def check(stale_s: float) -> None:
         last = max((d / f).stat().st_mtime for f in PROGRESS if (d / f).exists())
         if now - last < stale_s:
             continue
-        proc = psutil.Process(pid)
-        if "fedguard.cli" not in " ".join(proc.cmdline()):
-            continue  # pid reused by an unrelated process
-        victims = [proc]
-        parent = proc.parent()
-        if parent is not None and "fedguard.cli" in " ".join(parent.cmdline()):
-            victims.append(parent)  # Windows venv launcher
-        for p in victims:
-            p.kill()
+        try:
+            proc = psutil.Process(pid)
+            if "fedguard.cli" not in " ".join(proc.cmdline()):
+                continue  # pid reused by an unrelated process
+            victims = [proc]
+            parent = proc.parent()
+            if parent is not None and "fedguard.cli" in " ".join(parent.cmdline()):
+                victims.append(parent)  # Windows venv launcher
+            for p in victims:
+                p.kill()
+        except psutil.Error:  # pid gone, or reused by a protected process we cannot inspect: not our job
+            continue
         print(f"[{datetime.now():%H:%M}] killed hung job pid={pid} ({d}); no progress for {(now - last) / 60:.0f} min",
               flush=True)  # fmt: skip
 
