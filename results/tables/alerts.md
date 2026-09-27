@@ -1,0 +1,6 @@
+| model          | policy                       | false_per_100h   |   n_seeds | sensitivity   | median_lead_h   | utility     | alarms_per_100h   |
+|:---------------|:-----------------------------|:-----------------|----------:|:--------------|:----------------|:------------|:------------------|
+| FedGuard (ε=3) | -                            | not run yet      |       nan | nan           | nan             | nan         | nan               |
+| Centralized    | threshold-only               | 1.10 (n=1)       |         1 | 0.457 (n=1)   | 3.5 (n=1)       | 0.380 (n=1) | 1.18 (n=1)        |
+| Centralized    | uncertainty-gated (FedGuard) | 0.78 (n=1)       |         1 | 0.437 (n=1)   | 3.0 (n=1)       | 0.330 (n=1) | 0.85 (n=1)        |
+| Centralized    | gated, utility-optimal       | 1.12 (n=1)       |         1 | 0.453 (n=1)   | 4.0 (n=1)       | 0.379 (n=1) | 1.20 (n=1)        |

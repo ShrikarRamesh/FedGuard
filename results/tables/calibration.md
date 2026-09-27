@@ -1,0 +1,3 @@
+| model       | ECE deterministic   | ECE MC-Dropout mean   |
+|:------------|:--------------------|:----------------------|
+| Centralized | 0.2682 (n=1)        | 0.3063 (n=1)          |
