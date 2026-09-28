@@ -44,6 +44,12 @@ def _flat(d: dict, prefix: str = "") -> dict[str, Any]:
     return out
 
 
+def _best_version(met: dict) -> int | None:
+    """Global-model version of the best-on-validation checkpoint of an FL run (0 = the untrained model; D38)."""
+    ev = [e for e in met.get("fl", {}).get("evals", []) if e.get("val_auprc") == e.get("val_auprc")]
+    return int(max(ev, key=lambda e: e["val_auprc"])["version"]) if ev else None
+
+
 def collect(fast: bool = False) -> pd.DataFrame:
     """One row per completed run (any experiment), with config fields and test metrics."""
     rows = []
@@ -76,6 +82,7 @@ def collect(fast: bool = False) -> pd.DataFrame:
             "auprc_hi": g.get("ci95", {}).get("auprc", [np.nan, np.nan])[1], "wall_clock_s": summ.get("wall_clock_s"),
             "sim_time": summ.get("sim_time"), "bytes_total": summ.get("bytes_total"),
             "best_val_auprc": met.get("fl", {}).get("best_val_auprc"),
+            "best_version": _best_version(met),
         }  # fmt: skip
         if row["node"]:
             own = met["test"]["per_client"].get(row["node"], {})
@@ -92,7 +99,7 @@ EMPTY_COLUMNS = [
     "experiment", "node", "seed", "run_dir", "model", "partition", "lookback", "algorithm", "fl_mode", "dp", "epsilon",
     "budget_rule", "alpha0", "staleness_lambda", "norm", "test_auroc", "test_auprc", "prevalence", "test_ece",
     "test_brier", "auroc_lo", "auroc_hi", "auprc_lo", "auprc_hi", "wall_clock_s", "sim_time", "bytes_total",
-    "best_val_auprc", "own_test_auroc", "own_test_auprc",
+    "best_val_auprc", "best_version", "own_test_auroc", "own_test_auprc",
 ]  # fmt: skip
 
 
@@ -151,7 +158,9 @@ def privacy_table(df: pd.DataFrame) -> pd.DataFrame:
         row: dict[str, Any] = {"epsilon": eps}
         for label, exps in spec.items():
             sub = df[df.experiment.isin(exps) & (df.epsilon == eps) & (df.partition == "unit")]
-            row[f"{label} AUROC"] = ms(sub.test_auroc)
+            # D38: a run whose best checkpoint is version 0 never improved on the untrained model
+            init = "" if not len(sub) or not (sub.best_version == 0).any() else f" [{int((sub.best_version == 0).sum())} at init]"
+            row[f"{label} AUROC"] = ms(sub.test_auroc) + init
             row[f"{label} AUPRC"] = ms(sub.test_auprc)
             row[f"_{label}_auroc"] = sub.test_auroc.mean() if len(sub) else np.nan
             row[f"_{label}_auroc_std"] = sub.test_auroc.std(ddof=1) if len(sub) > 1 else np.nan

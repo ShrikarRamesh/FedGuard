@@ -372,6 +372,9 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - Client training losses follow an almost identical path for σ from 32 down to 1.5 (20-merge block means 1.5–2.0, rising from their start). The noise level barely changes training, but σ = 0 (same code path, same Opacus wrapper) reaches 0.757.
   - This is consistent with the AdamW explanation: in coordinates dominated by noise, the per-coordinate normalisation makes each step about lr in size whatever σ is.
   - **Diagnostic queued (`dp_diag_sgd`, seed 0, about 75 min):** DP with SGD (momentum 0.9) in place of AdamW; lr ∈ {0.02, 0.1, 0.5} at ε = 8, selected on validation AUPRC; σ = 0 at lr 0.1; ε = 1 at lr 0.1. The option is `privacy.optimizer` (default `adamw`, so existing configs and their hashes are unchanged); tested in `test_dp_sgd_optimizer_option`.
+  - **ε = 32, 64 and 256 (seed 0) never improved on the untrained initial model.** Each selected version 0 as its best checkpoint (validation AUPRC 0.0211 = the initial value). Their identical test AUROC (0.5623) is the **initial model's**, not a trained result, and must not be reported as one. At σ ≈ 0.55 (ε = 256) validation AUROC drifts to about 0.50 during training, while σ = 0 reaches 0.757.
+    - A tiny noise level destroying training, while zero noise works, is the signature of AdamW's per-coordinate normalisation. Coordinates whose true gradient is (near) zero receive steps of about lr in size once any noise is present, whatever σ is.
+    - The report must flag any run whose best checkpoint is version 0.
   - If SGD makes utility rise with ε, the main DP results and the sweep need rerunning with DP-SGD. That is about 10–12 GPU-hours, and the user decides.
 - **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
 
