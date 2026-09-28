@@ -143,6 +143,34 @@ def jobs_dp_small_rule() -> list[list[str]]:
     return [base + ["-o", f"privacy.epsilon={e}"] for e in (3.0, 32.0)]
 
 
+def jobs_rerun_lr_rule() -> list[list[str]]:
+    """D38 rerun of every DP result with the sigma-scaled lr rule (configs/privacy/uniform.yaml), in priority order
+    so a deadline cutoff loses the least important runs. Model choice is fixed by the pre-registered rule in D38."""
+    fl = lambda *a: ["fl", "run", *a]  # noqa: E731
+    nomc = ["-o", "eval.mc_dropout=false"]
+    j: list[list[str]] = []
+    for s in SEEDS:  # 1. Table 7.1 DP rows
+        j.append(fl("-c", "experiments/fedguard", "--seed", str(s)))
+        j.append(fl("-c", "experiments/fedavg_dp", "--seed", str(s)))
+    for s in SEEDS:  # 2. FedGuard adaptive sweep, 3 seeds
+        for e in EPS:
+            if e != 3.0:
+                j.append(fl("-c", "experiments/fedguard", "--seed", str(s), "--name", "sweep_adaptive", "-o", f"privacy.epsilon={e}", *nomc))
+    fedavg_sweep = lambda s: [fl("-c", "experiments/fedavg_dp", "--seed", str(s), "--name", "sweep_fedavg_dp",  # noqa: E731
+                                 "-o", f"privacy.epsilon={e}") for e in EPS if e != 3.0]  # fmt: skip
+    uniform_sweep = lambda s: [fl("-c", "experiments/fedguard", "--seed", str(s), "--name", "sweep_uniform",  # noqa: E731
+                                  "-o", "privacy.budget_rule=uniform", "-o", f"privacy.epsilon={e}", *nomc) for e in EPS]  # fmt: skip
+    j += fedavg_sweep(0)  # 3.
+    j += jobs_sweep_ext()  # 4.
+    j += uniform_sweep(0)  # 5.
+    for rule in ("inverse", "equal_noise"):  # 6.
+        j.append(fl("-c", "experiments/fedguard", "--seed", "0", "--name", f"abl_rule_{rule}", "-o", f"privacy.budget_rule={rule}", *nomc))
+    j += [["explain", "-e", "fedguard", "--seeds", "0"], ["alerts", "-e", "fedguard", "--seeds", "0,1,2"]]  # 7.
+    j += uniform_sweep(1) + uniform_sweep(2)  # 8.
+    j += fedavg_sweep(1) + fedavg_sweep(2)  # 9.
+    return j
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -190,7 +218,7 @@ def jobs_posthoc() -> list[list[str]]:
     ]
 
 
-STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "dp_lr_rule_floor": jobs_dp_lr_rule_floor, "dp_small_rule": jobs_dp_small_rule,"baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "dp_lr_rule_floor": jobs_dp_lr_rule_floor, "dp_small_rule": jobs_dp_small_rule, "rerun_lr_rule": jobs_rerun_lr_rule,"baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py
