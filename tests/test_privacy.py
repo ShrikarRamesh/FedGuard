@@ -182,7 +182,7 @@ def test_dp_sgd_optimizer_option(tiny_scenario, tmp_path):  # noqa: F811
             "privacy.physical_batch_size": "null", "privacy.reset_optimizer": "true"}  # fmt: skip
     eng = FLEngine(tiny_scenario, tiny_cfg("fedavg_dp", **base), tmp_path / "a", 0, torch.device("cpu"))
     assert isinstance(next(iter(eng.clients.values())).dp.optimizer.original_optimizer, torch.optim.AdamW)
-    cfg = tiny_cfg("fedavg_dp", **base, **{"privacy.optimizer": "sgd", "privacy.lr": 0.1})
+    cfg = tiny_cfg("fedavg_dp", **base, **{"privacy.optimizer": "sgd", "privacy.lr": 0.1, "privacy.lr_rule": "fixed"})
     eng = FLEngine(tiny_scenario, cfg, tmp_path / "b", 0, torch.device("cpu"))
     cl = next(iter(eng.clients.values()))
     opt = cl.dp.optimizer.original_optimizer
@@ -196,11 +196,15 @@ def test_dp_sgd_optimizer_option(tiny_scenario, tmp_path):  # noqa: F811
 
 
 def test_sigma_scaled_lr_rule(tiny_scenario, tmp_path):  # noqa: F811
-    """D38: lr_rule=sigma_scaled sets lr_i = effective_lr * sigma_i * C / (q_i n_i); the default keeps lr fixed."""
+    """D38: lr_rule=sigma_scaled (the configured default) sets lr_i = effective_lr * sigma_i * C / (q_i n_i);
+    lr_rule=fixed keeps privacy.lr."""
     base = {"fl.rounds": 2, "privacy.r_max": 2, "privacy.logical_batch_size": 4, "privacy.local_epochs": 1,
             "privacy.physical_batch_size": "null", "privacy.lr": 5e-4}  # fmt: skip
-    eng = FLEngine(tiny_scenario, tiny_cfg("fedguard", **base), tmp_path / "a", 0, torch.device("cpu"))
+    eng = FLEngine(tiny_scenario, tiny_cfg("fedguard", **base, **{"privacy.lr_rule": "fixed"}), tmp_path / "a", 0,
+                   torch.device("cpu"))  # fmt: skip
     assert all(b["lr"] == 5e-4 for b in eng.budgets.values())
+    eng = FLEngine(tiny_scenario, tiny_cfg("fedguard", **base), tmp_path / "d", 0, torch.device("cpu"))
+    assert all(b["lr"] != 5e-4 for b in eng.budgets.values())  # default recipe is sigma-scaled
     cfg = tiny_cfg("fedguard", **base, **{"privacy.lr_rule": "sigma_scaled", "privacy.effective_lr": 0.05})
     eng = FLEngine(tiny_scenario, cfg, tmp_path / "b", 0, torch.device("cpu"))
     for c, b in eng.budgets.items():
