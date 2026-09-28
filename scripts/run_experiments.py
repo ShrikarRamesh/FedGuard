@@ -127,6 +127,14 @@ def jobs_dp_lr_rule() -> list[list[str]]:
     return [base + ["-o", f"privacy.epsilon={e}"] for e in (3.0, 8.0, 32.0, 256.0, 1.0)]
 
 
+def jobs_dp_lr_rule_floor() -> list[list[str]]:
+    """D38/D39: sigma-scaled lr floored at the non-DP tuned lr (1e-4). The floor is active only where the scaled lr
+    falls below 1e-4 (sigma < ~2.1: eps = 32, 256); at eps = 1, 3, 8 the lr equals dp_lr_rule's exactly."""
+    base = ["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "dp_lr_rule_floor", "-o", "eval.mc_dropout=false",
+            "-o", "privacy.lr_rule=sigma_scaled", "-o", "privacy.effective_lr=0.045", "-o", "privacy.lr_min=0.0001"]  # fmt: skip
+    return [base + ["-o", f"privacy.epsilon={e}"] for e in (32.0, 256.0)]
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -174,7 +182,7 @@ def jobs_posthoc() -> list[list[str]]:
     ]
 
 
-STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "dp_lr_rule_floor": jobs_dp_lr_rule_floor, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py

@@ -208,6 +208,11 @@ def test_sigma_scaled_lr_rule(tiny_scenario, tmp_path):  # noqa: F811
         want = 0.05 * b["noise_multiplier"] * 1.0 / (b["sample_rate"] * cl.n_patients)
         assert b["lr"] == pytest.approx(want)
         assert cl.dp.optimizer.original_optimizer.param_groups[0]["lr"] == pytest.approx(want)
+    # lr_min floors the rule (tiny effective_lr -> every client sits on the floor)
+    cfg = tiny_cfg("fedguard", **base, **{"privacy.lr_rule": "sigma_scaled", "privacy.effective_lr": 1e-9,
+                                          "privacy.lr_min": 1e-4})  # fmt: skip
+    eng = FLEngine(tiny_scenario, cfg, tmp_path / "c", 0, torch.device("cpu"))
+    assert all(b["lr"] == pytest.approx(1e-4) for b in eng.budgets.values())
 
 
 def test_patient_window_dataset_one_window_per_patient(tiny_scenario):  # noqa: F811

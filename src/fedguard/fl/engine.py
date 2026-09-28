@@ -139,6 +139,8 @@ class FLEngine:
                 # lr * B_exp / (sigma * C). Keep that effective step at `effective_lr` for every client and eps.
                 # sigma, C, q and n_i are public (data-independent), so this is free post-processing.
                 lr = float(p.effective_lr) * sigma * float(p.max_grad_norm) / (q * cl.n_patients)
+                if p.get("lr_min") is not None:  # floor (non-DP tuned lr): the rule assumes noise dominates, and
+                    lr = max(lr, float(p.lr_min))  # without a floor lr -> 0 as sigma -> 0 and high eps under-trains
             setup_dp(cl, target, sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
                      p.get("physical_batch_size"), lr=lr,
                      windows_per_patient=int(p.get("windows_per_patient", 1)),
