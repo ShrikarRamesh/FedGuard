@@ -385,6 +385,25 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
     - 0.045 was derived from the lr already tuned at ε = 3 (per-client values 0.040–0.051), not tuned anew. At ε = 3 it reproduces lr ≈ 4.4e-4 to 5.7e-4.
     - σ, C, q and n_i are public, so this is post-processing with no privacy cost. Tested in `test_sigma_scaled_lr_rule`; the default (`fixed`) is unchanged.
     - Caveat: the rule assumes noise dominates. At very large ε it gives a very small lr (2.5e-5 at ε = 256) and may under-train.
+  - **σ-scaled lr results (FedGuard seed 0, 2026-09-28):** test AUROC at ε = 1 / 3 / 8 was 0.654 / 0.640 / 0.630; the floor (`lr_min` = 1e-4, the non-DP tuned lr) is inactive there.
+    - Without floor: ε = 32 → 0.628, ε = 256 → 0.625. With floor (every client's lr = 1e-4, verified in `events.jsonl`): ε = 32 → 0.627, ε = 256 → **0.596** (ECE 0.069).
+    - The rule removes the collapse to the initial model; ε = 3 is unchanged (0.640, identical to Table 7.1 seed 0).
+    - **The curve stays flat (about 0.63–0.65 from ε = 1 to 32)**, far below the σ = 0 ceiling (0.757). The floor makes ε = 256 worse: a 4× larger step at σ ≈ 0.55 still hurts, so training remains noise-dominated even there. The best checkpoints come early (versions 4–8 at ε ≥ 8).
+    - **Leading explanation:** noise norm ≈ σ·C·√d / B with d ≈ 600k parameters. At ε = 256 this is about 0.45, comparable to the clipped signal (norm ≤ 1); at ε = 8 it is about 3.4. Every tested ε is noise-dominated because of model size. This is a real DP limitation of the recipe, not a code error.
+    - The earlier smaller-model check (D27, d_model 64) predates the D34 fix and is therefore invalid.
+    - **Decision (user, 2026-09-28):** the floor is dropped. The σ-scaled rule is used without `lr_min`. A time-boxed small-model test (`dp_small_rule`: d_model 64, 2 layers, 4 heads, d_ff 128; FedGuard seed 0; ε = 3 and 32; σ-scaled lr, no floor) decides which rerun to do.
+    - **Pre-registered model choice (written 2026-09-28 21:35, before the test ran; validation data only):** the DP rerun uses the small model if its ε = 3 best validation AUPRC is ≥ 0.0305 (≥ 10% above the large model's 0.0277 under the same rule, seed 0), and its ε = 32 best validation AUPRC is not below its ε = 3 value. Otherwise it uses the current model (d_model 128, 4 layers).
+    - **Rerun (user, 2026-09-28):** starts immediately after the test. One GPU job at a time, hard deadline Tue 2026-09-29 12:00, then `fedguard report` and `fedguard proof`. The σ-scaled lr rule (no floor) is the DP recipe for **both** FedGuard and FedAvg + DP. Superseded DP runs move to `runs/_superseded/pre_lr_rule/`.
+    - **Priority order** (so a cutoff loses the least important runs):
+      1. Table 7.1 DP rows (FedGuard and FedAvg + DP, ε = 3, 3 seeds);
+      2. FedGuard adaptive sweep ε ∈ {1, 2, 5, 8} × 3 seeds;
+      3. FedAvg + DP sweep ε ∈ {1, 2, 5, 8}, seed 0;
+      4. large-ε extension ε ∈ {16, 32, 64, 256}, seed 0;
+      5. uniform-rule sweep, seed 0;
+      6. DP budget-rule ablations;
+      7. FedGuard explanations;
+      8. uniform-rule sweep seeds 1–2;
+      9. FedAvg + DP sweep seeds 1–2.
   - If the rule makes utility rise with ε, the ε sweep (every point except ε = 3) needs rerunning with it. That is about 8 GPU-hours, and the user decides. The ε = 3 main results are unaffected unless the ε = 3 rerun differs materially. That is about 10–12 GPU-hours, and the user decides.
 - **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
 

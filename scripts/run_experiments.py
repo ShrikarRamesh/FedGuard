@@ -135,6 +135,14 @@ def jobs_dp_lr_rule_floor() -> list[list[str]]:
     return [base + ["-o", f"privacy.epsilon={e}"] for e in (32.0, 256.0)]
 
 
+def jobs_dp_small_rule() -> list[list[str]]:
+    """D38 (approved): does a smaller PatchTST (d_model 64, 2 layers; noise dimension ~4-5x lower) lift the DP curve?
+    FedGuard seed 0, sigma-scaled lr (no floor), eps = 3 and 32. Replaces the invalid pre-D34 small-model check (D27)."""
+    base = ["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "dp_small_rule", "-o", "eval.mc_dropout=false",
+            "-o", "privacy.lr_rule=sigma_scaled", "-o", "privacy.effective_lr=0.045", *SMALL_MODEL]  # fmt: skip
+    return [base + ["-o", f"privacy.epsilon={e}"] for e in (3.0, 32.0)]
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -182,7 +190,7 @@ def jobs_posthoc() -> list[list[str]]:
     ]
 
 
-STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "dp_lr_rule_floor": jobs_dp_lr_rule_floor, "baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "dp_lr_rule_floor": jobs_dp_lr_rule_floor, "dp_small_rule": jobs_dp_small_rule,"baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py
@@ -250,9 +258,33 @@ def release_slot() -> None:
     _slot_lock().unlink(missing_ok=True)
 
 
+DEADLINE: datetime | None = None  # --deadline: start nothing after it; kill a job still running at it
+RC_DEADLINE_SKIPPED, RC_DEADLINE_KILLED = 125, 126
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Kill a job and its children (on Windows the venv launcher's python child survives ``proc.kill()``)."""
+    import psutil
+
+    try:
+        parent = psutil.Process(proc.pid)
+        for p in [*parent.children(recursive=True), parent]:
+            try:
+                p.kill()
+            except psutil.Error:
+                pass
+    except psutil.Error:
+        pass
+
+
 def run_job(args: list[str], fast: bool, log_dir: Path, max_jobs: int = 3) -> tuple[list[str], int, float]:
+    if DEADLINE is not None and datetime.now() >= DEADLINE:
+        return args, RC_DEADLINE_SKIPPED, 0.0
     if not fast:
         acquire_slot(max_jobs)
+        if DEADLINE is not None and datetime.now() >= DEADLINE:
+            release_slot()
+            return args, RC_DEADLINE_SKIPPED, 0.0
     cmd = [sys.executable, "-m", "fedguard.cli", *args, *(["--fast"] if fast else [])]
     name = "_".join(a.replace("/", "-").replace("=", "-")[:24] for a in args if not a.startswith("-"))[:120]
     log = log_dir / f"{datetime.now():%Y%m%d-%H%M%S}_{name}.log"
@@ -266,12 +298,19 @@ def run_job(args: list[str], fast: bool, log_dir: Path, max_jobs: int = 3) -> tu
             while time.time() < deadline and proc.poll() is None and not _job_visible(proc.pid):
                 time.sleep(1)
             release_slot()
+        limit = JOB_TIMEOUT_S
+        if DEADLINE is not None:
+            limit = min(limit, max(0.0, (DEADLINE - datetime.now()).total_seconds()))
         try:  # a job that hangs (e.g. after a CUDA OOM in another process) must not hold a GPU slot forever
-            rc = proc.wait(timeout=JOB_TIMEOUT_S)
+            rc = proc.wait(timeout=limit)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            f.write(f"\nTIMEOUT after {JOB_TIMEOUT_S} s\n")
-            rc = 124
+            _kill_tree(proc)
+            if limit < JOB_TIMEOUT_S:
+                f.write(f"\nDEADLINE {DEADLINE:%Y-%m-%d %H:%M}: job killed unfinished\n")
+                rc = RC_DEADLINE_KILLED
+            else:
+                f.write(f"\nTIMEOUT after {JOB_TIMEOUT_S} s\n")
+                rc = 124
     return args, rc, time.time() - t0
 
 
@@ -284,7 +323,10 @@ def main() -> None:
     ap.add_argument("--max-gpu-jobs", type=int, default=3, help="machine-wide cap on concurrent GPU jobs (6 GB card)")
     ap.add_argument("--match", action="append", default=[], help="keep jobs whose command contains this text")
     ap.add_argument("--exclude", action="append", default=[], help="drop jobs whose command contains this text")
+    ap.add_argument("--deadline", help="YYYY-MM-DDTHH:MM: start no job after it; kill a job still running at it")
     a = ap.parse_args()
+    global DEADLINE
+    DEADLINE = datetime.fromisoformat(a.deadline) if a.deadline else None
     stages = list(STAGES) if a.stage == "all" else [a.stage]
     if a.fast and "tune_dp" in stages:  # logical batches of 1024+ patients exceed the fast subset
         print("skipping stage tune_dp in --fast mode (batch sizes exceed the fast patient subset)")
@@ -311,7 +353,8 @@ def main() -> None:
             time.sleep(5 if a.workers > 1 and not a.fast else 0)
         for fut in as_completed(futs):
             args, rc, dt = fut.result()
-            status = "ok" if rc == 0 else f"FAILED ({rc})"
+            status = {0: "ok", RC_DEADLINE_SKIPPED: "SKIPPED (deadline)", RC_DEADLINE_KILLED: "KILLED (deadline)"}
+            status = status.get(rc, f"FAILED ({rc})")
             print(f"[{datetime.now():%H:%M:%S}] {status:10s} {dt / 60:6.1f} min  fedguard {' '.join(args)}", flush=True)
             if rc != 0:
                 failed.append(args)
