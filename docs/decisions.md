@@ -375,7 +375,17 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - **ε = 32, 64 and 256 (seed 0) never improved on the untrained initial model.** Each selected version 0 as its best checkpoint (validation AUPRC 0.0211 = the initial value). Their identical test AUROC (0.5623) is the **initial model's**, not a trained result, and must not be reported as one. At σ ≈ 0.55 (ε = 256) validation AUROC drifts to about 0.50 during training, while σ = 0 reaches 0.757.
     - A tiny noise level destroying training, while zero noise works, is the signature of AdamW's per-coordinate normalisation. Coordinates whose true gradient is (near) zero receive steps of about lr in size once any noise is present, whatever σ is.
     - The report must flag any run whose best checkpoint is version 0.
-  - If SGD makes utility rise with ε, the main DP results and the sweep need rerunning with DP-SGD. That is about 10–12 GPU-hours, and the user decides.
+  - **SGD diagnostic result (seed 0, 07:21):**
+    - SGD with momentum 0.9 gave test AUROC 0.633 / 0.614 / 0.616 at ε = 8 for lr 0.02 / 0.1 / 0.5, and 0.632 at ε = 1 (lr 0.1).
+    - **σ = 0 at lr 0.1 also collapsed** (validation AUROC decayed to 0.50; test 0.597). So the "noise-driven random walk" explanation is rejected: SGD fails without any noise when its step is too large.
+  - **Revised explanation (Tang et al., DP-AdamBC):** when noise dominates Adam's second moment, DP-Adam behaves like DP-SGD with step lr·B/(σ·C), where B is the expected batch.
+    - With lr fixed at the value tuned for ε = 3 (5e-4), the effective step is about 0.016 at ε = 1, about 0.05 at ε = 3, and about 0.85 at ε = 256.
+    - This predicts every observation: the inverted curve, the collapse to the initial model at ε ≥ 32, the σ = 0 control working (ordinary Adam), and the SGD failures at effective step ≈ 1.
+  - **Fix under test (`dp_lr_rule`, FedGuard seed 0, ε ∈ {3, 8, 32, 256, 1}):** `privacy.lr_rule: sigma_scaled` sets each client's lr to `effective_lr · σ_i · C / (q_i n_i)` with `effective_lr` = 0.045.
+    - 0.045 was derived from the lr already tuned at ε = 3 (per-client values 0.040–0.051), not tuned anew. At ε = 3 it reproduces lr ≈ 4.4e-4 to 5.7e-4.
+    - σ, C, q and n_i are public, so this is post-processing with no privacy cost. Tested in `test_sigma_scaled_lr_rule`; the default (`fixed`) is unchanged.
+    - Caveat: the rule assumes noise dominates. At very large ε it gives a very small lr (2.5e-5 at ε = 256) and may under-train.
+  - If the rule makes utility rise with ε, the ε sweep (every point except ε = 3) needs rerunning with it. That is about 8 GPU-hours, and the user decides. The ε = 3 main results are unaffected unless the ε = 3 rerun differs materially. That is about 10–12 GPU-hours, and the user decides.
 - **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
 
 ## D12. Library versions (Adopted)

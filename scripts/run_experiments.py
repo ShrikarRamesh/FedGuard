@@ -118,6 +118,15 @@ def jobs_dp_diag_sgd() -> list[list[str]]:
     return j
 
 
+def jobs_dp_lr_rule() -> list[list[str]]:
+    """D38: DP-Adam behaves like DP-SGD with step lr * B / (sigma C) when noise dominates, so a fixed lr tuned at
+    eps = 3 is far too aggressive at small sigma. Test a sigma-scaled lr (effective step 0.045, calibrated from the
+    lr tuned at eps = 3) across eps, FedGuard seed 0."""
+    base = ["fl", "run", "-c", "experiments/fedguard", "--seed", "0", "--name", "dp_lr_rule", "-o", "eval.mc_dropout=false",
+            "-o", "privacy.lr_rule=sigma_scaled", "-o", "privacy.effective_lr=0.045"]  # fmt: skip
+    return [base + ["-o", f"privacy.epsilon={e}"] for e in (3.0, 8.0, 32.0, 256.0, 1.0)]
+
+
 def jobs_baselines() -> list[list[str]]:
     j = [["train", "centralized", "--model", m, "--seed", "0"] for m in ("lr", "lgbm")]
     j += [["train", "centralized", "--model", "gru", "--seed", str(s)] for s in SEEDS]
@@ -165,7 +174,7 @@ def jobs_posthoc() -> list[list[str]]:
     ]
 
 
-STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "baselines": jobs_baselines, "ablations": jobs_ablations}
+STAGES = {"posthoc": jobs_posthoc, "tune": jobs_tune, "tune_dp": jobs_tune_dp, "tune_dp_small": jobs_tune_dp_small, "main": jobs_main, "sweep": jobs_sweep, "sweep_ext": jobs_sweep_ext, "dp_diag": jobs_dp_diag, "dp_diag_sgd": jobs_dp_diag_sgd, "dp_lr_rule": jobs_dp_lr_rule, "baselines": jobs_baselines, "ablations": jobs_ablations}
 
 
 JOB_TIMEOUT_S = 8 * 3600  # jobs can take 4 h+ when the GPU is shared; genuine hangs are caught by scripts/watchdog.py

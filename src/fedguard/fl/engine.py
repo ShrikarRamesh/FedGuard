@@ -133,14 +133,20 @@ class FLEngine:
                     else calibrate_noise(float(targets[c]), float(p.delta), q, steps)
                 )
                 target = targets[c]
+            lr = float(p.get("lr", 5e-4))
+            if p.get("lr_rule", "fixed") == "sigma_scaled" and sigma > 0:
+                # D38: when noise dominates Adam's second moment, DP-Adam acts like DP-SGD with step
+                # lr * B_exp / (sigma * C). Keep that effective step at `effective_lr` for every client and eps.
+                # sigma, C, q and n_i are public (data-independent), so this is free post-processing.
+                lr = float(p.effective_lr) * sigma * float(p.max_grad_norm) / (q * cl.n_patients)
             setup_dp(cl, target, sigma, float(p.delta), B, R, E, float(p.max_grad_norm),
-                     p.get("physical_batch_size"), lr=float(p.get("lr", 5e-4)),
+                     p.get("physical_batch_size"), lr=lr,
                      windows_per_patient=int(p.get("windows_per_patient", 1)),
                      optimizer=str(p.get("optimizer", "adamw")), momentum=float(p.get("momentum", 0.9)))  # fmt: skip
             cl.dp.reset_optimizer = bool(p.get("reset_optimizer", False))
             out[c] = {
                 "target_eps": target, "delta": float(p.delta), "noise_multiplier": sigma, "sample_rate": q,
-                "planned_steps": steps, "r_max": R,
+                "planned_steps": steps, "r_max": R, "lr": lr,
                 "planned_eps": epsilon_after(sigma, q, steps, float(p.delta)) if sigma > 0 else float("inf"),
                 "diagnostic_no_guarantee": override is not None,
             }  # fmt: skip
