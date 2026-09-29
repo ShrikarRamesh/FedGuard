@@ -19,6 +19,7 @@ import psutil
 from fedguard.utils.io import runs_dir
 
 PROGRESS = ("events.jsonl", "metrics.csv", "train.log", "meta.json", "heartbeat")
+OWNER_START_WINDOW_S = 900  # a run's own process starts at most this long before it creates its run dir
 
 
 def check(stale_s: float) -> None:
@@ -28,8 +29,9 @@ def check(stale_s: float) -> None:
         if (d / "DONE").exists():
             continue
         try:
-            pid = json.loads(meta.read_text(encoding="utf-8")).get("pid")
-        except (OSError, json.JSONDecodeError):
+            m = json.loads(meta.read_text(encoding="utf-8"))
+            pid, created = m.get("pid"), datetime.fromisoformat(m["created"]).timestamp()
+        except (OSError, json.JSONDecodeError, KeyError, ValueError):
             continue
         if not pid or not psutil.pid_exists(pid):
             continue
@@ -40,6 +42,10 @@ def check(stale_s: float) -> None:
             proc = psutil.Process(pid)
             if "fedguard.cli" not in " ".join(proc.cmdline()):
                 continue  # pid reused by an unrelated process
+            # Windows reuses pids, including for a NEW fedguard job: the process that owns this run dir started
+            # shortly before it created the dir (data loading). A later-started process is someone else's job.
+            if not (created - OWNER_START_WINDOW_S <= proc.create_time() <= created + 5):
+                continue
             victims = [proc]
             parent = proc.parent()
             if parent is not None and "fedguard.cli" in " ".join(parent.cmdline()):
