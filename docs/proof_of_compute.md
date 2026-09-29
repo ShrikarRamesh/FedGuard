@@ -1,15 +1,15 @@
 # Proof of compute
 
-_Generated 2026-09-29 09:36 by `fedguard proof` from files on disk only (see the source list in `src/fedguard/eval/proof.py`). Nothing in this document is estimated or typed in by hand, except the section explicitly labelled as manual GPU readings. Regenerate with `fedguard proof`._
+_Generated 2026-09-29 18:55 by `fedguard proof` from files on disk only (see the source list in `src/fedguard/eval/proof.py`). Nothing in this document is estimated or typed in by hand, except the section explicitly labelled as manual GPU readings. Regenerate with `fedguard proof`._
 
 ## Summary
 
-- Jobs recorded (excluding 95 fast-mode smoke-test jobs): **212** (209 GPU jobs, 3 CPU-only sklearn baselines), from 2026-09-26 17:46 to 2026-09-29 09:36.
-- **GPU job-hours: 91.6 h.** This is the sum of the wall-clock durations of all GPU jobs, including failed, killed and superseded ones. Jobs that shared the GPU are each counted in full.
-- **GPU busy wall-clock: 50.9 h.** This is the union of GPU job intervals, i.e. time during which at least one job was running.
+- Jobs recorded (excluding 95 fast-mode smoke-test jobs): **223** (220 GPU jobs, 3 CPU-only sklearn baselines), from 2026-09-26 17:46 to 2026-09-29 11:59.
+- **GPU job-hours: 94.0 h.** This is the sum of the wall-clock durations of all GPU jobs, including failed, killed and superseded ones. Jobs that shared the GPU are each counted in full.
+- **GPU busy wall-clock: 53.2 h.** This is the union of GPU job intervals, i.e. time during which at least one job was running.
 - Maximum number of GPU jobs running at the same time: **6**.
 - GPU jobs with **unknown duration** (excluded from the totals above): 1 (attack -e fedavg --seed 0 --n 30 --iters 300 --restarts 2, started 2026-09-27 12:00).
-- GPU jobs by status: done: 117 (39.4 h), superseded (done): 58 (35.4 h), killed/failed: 21 (7.0 h), superseded (killed/failed): 9 (5.8 h), no success marker: 2 (0.0 h), running: 1 (0.0 h), timeout: 1 (4.0 h).
+- GPU jobs by status: done: 128 (41.7 h), superseded (done): 58 (35.4 h), killed/failed: 22 (7.1 h), superseded (killed/failed): 9 (5.8 h), no success marker: 2 (0.0 h), timeout: 1 (4.0 h).
 - GPU: NVIDIA GeForce RTX 4050 Laptop GPU.
 
 Failed, killed, timed-out and superseded runs are kept on purpose. They document the bugs and operational problems found and fixed during the project (docs/decisions.md D19–D38): an optimizer-state bug that invalidated the first DP results, a fixed DP learning rate that made the ε sweep collapse at large ε (superseded by the σ-scaled rule), hung jobs, watchdog false positives (including a kill of a new job whose pid Windows had reused), GPU memory overflow with several concurrent DP jobs, system-RAM exhaustion (MemoryError) caused by the OneDrive client holding ~31 GB, and a LightGBM early-stopping bug.
@@ -29,10 +29,10 @@ Failed, killed, timed-out and superseded runs are kept on purpose. They document
 
 ### From automated logs
 
-Automated samples: 5373 (nvidia-smi every 30 s) from 2026-09-27T12:40:15 to 2026-09-29T09:36:27.
+Automated samples: 6486 (nvidia-smi every 30 s) from 2026-09-27T12:40:15 to 2026-09-29T18:54:51.
 
 - **Peak dedicated GPU memory in the automated log: 5355 / 6141 MiB** at 2026-09-27T13:01:57 (2 FedGuard job(s) running, utilisation 100%).
-- Mean memory used: 2426 MiB; mean utilisation: 41%.
+- Mean memory used: 2191 MiB; mean utilisation: 37%.
 - Samples by number of concurrent FedGuard jobs (max memory MiB): 0 job(s): 1077, 1 job(s): 5242, 2 job(s): 5355
 
 - Highest per-run peak allocation recorded by a run itself (torch.cuda.max_memory_allocated): 2973 MiB (fedguard, seed 1).
@@ -262,11 +262,63 @@ These readings were taken by hand with `nvidia-smi` during the session, **before
 | sweep_fedavg_dp                                           | 2      | fedavg/sync, DP eps=2.0 uniform, opt-reset                        | 2026-09-29 09:02 | 2026-09-29 09:16 | last file write                                                | 0.23             | killed/failed              | NVIDIA GeForce RTX 4050 Laptop GPU |              |              |
 | sweep_fedavg_dp                                           | 2      | fedavg/sync, DP eps=5.0 uniform, opt-reset                        | 2026-09-29 09:16 | 2026-09-29 09:21 | last file write                                                | 0.08             | killed/failed              | NVIDIA GeForce RTX 4050 Laptop GPU |              |              |
 | sweep_fedavg_dp                                           | 2      | fedavg/sync, DP eps=8.0 uniform, opt-reset                        | 2026-09-29 09:21 | 2026-09-29 09:35 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6087       | 0.023        |
-| sweep_uniform                                             | 0      | fedguard_async/async, DP eps=8.0 uniform, opt-reset               | 2026-09-29 09:35 | 2026-09-29 09:36 | still running (now)                                            | 0.01             | running                    | NVIDIA GeForce RTX 4050 Laptop GPU |              |              |
+| sweep_uniform                                             | 0      | fedguard_async/async, DP eps=8.0 uniform, opt-reset               | 2026-09-29 09:35 | 2026-09-29 09:48 | DONE marker                                                    | 0.21             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6297       | 0.027        |
+| sweep_fedavg_dp                                           | 1      | fedavg/sync, DP eps=1.0 uniform, opt-reset                        | 2026-09-29 09:49 | 2026-09-29 10:01 | DONE marker                                                    | 0.21             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.624        | 0.0229       |
+| sweep_fedavg_dp                                           | 2      | fedavg/sync, DP eps=2.0 uniform, opt-reset                        | 2026-09-29 10:02 | 2026-09-29 10:14 | DONE marker                                                    | 0.21             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6004       | 0.0232       |
+| sweep_fedavg_dp                                           | 2      | fedavg/sync, DP eps=5.0 uniform, opt-reset                        | 2026-09-29 10:14 | 2026-09-29 10:27 | DONE marker                                                    | 0.21             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.611        | 0.0229       |
+| sweep_uniform                                             | 1      | fedguard_async/async, DP eps=1.0 uniform, opt-reset               | 2026-09-29 10:27 | 2026-09-29 10:40 | DONE marker                                                    | 0.21             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.5955       | 0.0235       |
+| sweep_uniform                                             | 1      | fedguard_async/async, DP eps=2.0 uniform, opt-reset               | 2026-09-29 10:40 | 2026-09-29 10:53 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6031       | 0.0231       |
+| sweep_uniform                                             | 1      | fedguard_async/async, DP eps=3.0 uniform, opt-reset               | 2026-09-29 10:53 | 2026-09-29 11:06 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6055       | 0.0224       |
+| sweep_uniform                                             | 1      | fedguard_async/async, DP eps=8.0 uniform, opt-reset               | 2026-09-29 11:06 | 2026-09-29 11:19 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6038       | 0.0208       |
+| sweep_uniform                                             | 2      | fedguard_async/async, DP eps=1.0 uniform, opt-reset               | 2026-09-29 11:19 | 2026-09-29 11:32 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6095       | 0.0229       |
+| sweep_uniform                                             | 2      | fedguard_async/async, DP eps=2.0 uniform, opt-reset               | 2026-09-29 11:32 | 2026-09-29 11:46 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6153       | 0.0234       |
+| sweep_uniform                                             | 2      | fedguard_async/async, DP eps=3.0 uniform, opt-reset               | 2026-09-29 11:46 | 2026-09-29 11:59 | DONE marker                                                    | 0.22             | done                       | NVIDIA GeForce RTX 4050 Laptop GPU | 0.6145       | 0.0233       |
+| sweep_uniform                                             | 2      | fedguard_async/async, DP eps=5.0 uniform, opt-reset               | 2026-09-29 11:59 | 2026-09-29 11:59 | last file write                                                | 0.01             | killed/failed              | NVIDIA GeForce RTX 4050 Laptop GPU |              |              |
 
 ## Commit timeline (`git log --stat`)
 
 ```
+commit bc379b7c55a63cafc7c6f4aa1c66ddb9daeeabd3
+Author: YourIPaddress <myselfshrikar@gmail.com>
+Date:   2026-09-29 09:37:55 +0530
+
+    Report + proof after the sigma-scaled-lr DP rerun; privacy table includes large-eps extension; D39 incidents
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+ docs/decisions.md                        |  11 +
+ docs/figures/compute_timeline.png        | Bin 287620 -> 639005 bytes
+ docs/proof_of_compute.md                 | 571 +++++++++++++++++++++++++------
+ results/figures/alerts.png               | Bin 49223 -> 59703 bytes
+ results/figures/attack_example.png       | Bin 0 -> 170206 bytes
+ results/figures/methods_auroc_auprc.png  | Bin 90294 -> 90298 bytes
+ results/figures/privacy_utility.png      | Bin 49512 -> 66745 bytes
+ results/figures/sync_vs_async.png        | Bin 80219 -> 98612 bytes
+ results/report_summary.json              |   6 +-
+ results/summary.csv                      | 166 ++++++---
+ results/tables/ALL.md                    |  65 ++--
+ results/tables/ablation_budget_rules.md  |   6 +-
+ results/tables/ablation_budget_rules.tex |   6 +-
+ results/tables/ablation_lookback.md      |   4 +-
+ results/tables/ablation_lookback.tex     |   4 +-
+ results/tables/ablation_node_count.md    |   6 +-
+ results/tables/ablation_node_count.tex   |   6 +-
+ results/tables/ablation_sync_async.md    |   8 +-
+ results/tables/ablation_sync_async.tex   |   8 +-
+ results/tables/alerts.md                 |  14 +-
+ results/tables/alerts.tex                |  14 +-
+ results/tables/async_tuning.md           |   4 +-
+ results/tables/async_tuning.tex          |   2 +
+ results/tables/calibration.md            |   7 +-
+ results/tables/calibration.tex           |   1 +
+ results/tables/main.md                   |   2 +-
+ results/tables/main.tex                  |   2 +-
+ results/tables/privacy.md                |  16 +-
+ results/tables/privacy.tex               |  16 +-
+ src/fedguard/eval/proof.py               |   7 +-
+ src/fedguard/eval/report.py              |   7 +-
+ 31 files changed, 712 insertions(+), 247 deletions(-)
+
 commit f5ed6487cceb85fc28528f113298d5cbbe2261f4
 Author: YourIPaddress <myselfshrikar@gmail.com>
 Date:   2026-09-29 09:26:01 +0530
