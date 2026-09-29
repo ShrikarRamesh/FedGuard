@@ -1,3 +1,4 @@
-| model       | ECE deterministic   | ECE MC-Dropout mean   |
-|:------------|:--------------------|:----------------------|
-| Centralized | 0.2682 (n=1)        | 0.3063 (n=1)          |
+| model          | ECE deterministic   | ECE MC-Dropout mean   |
+|:---------------|:--------------------|:----------------------|
+| FedGuard (ε=3) | 0.0161 ± 0.0001     | 0.0147 ± 0.0004       |
+| Centralized    | 0.2682 (n=1)        | 0.3063 (n=1)          |

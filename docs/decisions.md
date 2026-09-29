@@ -410,6 +410,17 @@ Isolating diagnostics (seed 0, σ = 0, i.e. no noise and no privacy guarantee, l
   - If the rule makes utility rise with ε, the ε sweep (every point except ε = 3) needs rerunning with it. That is about 8 GPU-hours, and the user decides. The ε = 3 main results are unaffected unless the ε = 3 rerun differs materially. That is about 10–12 GPU-hours, and the user decides.
 - **Next steps:** the ε = 16–256 extension (running tonight) shows whether utility recovers at all. A DP-SGD (non-adaptive optimizer) check at ε = 8 would test the hypothesis. Until then the curve is reported as measured, with this caveat.
 
+## D39. Overnight rerun incidents: OneDrive RAM exhaustion and a watchdog PID-reuse kill (2026-09-29)
+
+- **Outcome of `rerun_lr_rule`** (started 2026-09-28 21:57, finished 09:35): 40 jobs succeeded and 13 failed. Priorities 1–7 completed in full: Table 7.1 DP rows, FedGuard adaptive sweep × 3 seeds, FedAvg + DP sweep seed 0, large-ε extension, uniform-rule sweep seed 0 except ε = 8, budget-rule ablations, and FedGuard explanations and alerts.
+- **Failures:**
+  - 12 failed with `MemoryError` from 06:28 onwards. They were uniform-rule seeds 1–2 and FedAvg + DP seed 1 ε = 1 / seed 2 ε = 2 and 5. The OneDrive client process had grown to 30.8 GB of private memory, leaving 0.4 GB RAM and 2.1 GB commit free.
+    - The graceful `/shutdown` was ignored, so the hung process was force-stopped and OneDrive restarted (now about 0.1 GB).
+    - The 3-hourly ~1 GB backup zips written into the OneDrive folder are a plausible but unproven contributor. The OneDrive process had been running since 2026-09-26 16:10, before the backups began.
+  - 1 (uniform rule, seed 0, ε = 8, exit 15) was **killed by the watchdog**. An abandoned run dir from 2026-09-27 had recorded PID 3792; Windows reused that PID for the new job, and since the new process was a genuine `fedguard.cli` job, the command-line check passed.
+    - Fix: the watchdog now only kills a PID whose process start time lies within 15 min before that run dir's creation time. Tested with a dummy process for both cases (reused PID spared, genuinely stale job killed).
+- **Handling:** failed runs have no DONE marker and are excluded from every table. The 13 jobs are retried from 09:36 under the same 12:00 deadline, in priority order: uniform seed 0 ε = 8, the FedAvg + DP seeds, then the uniform-rule seeds 1–2.
+
 ## D12. Library versions (Adopted)
 
 Built against torch 2.14.0+cu130, opacus 1.6.0, flwr 1.38.0 (Message API: `ServerApp`/`ClientApp`, `flwr.serverapp.strategy.FedAvg/FedProx`), captum 0.9.0, streamlit 1.64.0, and Python 3.11. Exact pins are in `pyproject.toml`.

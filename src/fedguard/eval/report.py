@@ -151,10 +151,11 @@ def gap_recovered(mt: pd.DataFrame, method: str = "FedGuard", key: str = "auroc_
 
 def privacy_table(df: pd.DataFrame) -> pd.DataFrame:
     """eps x method (FedGuard adaptive / FedGuard uniform rule / FedAvg + DP) test AUROC & AUPRC."""
-    spec = {"FedGuard (adaptive)": ("fedguard", "sweep_adaptive"), "FedGuard (uniform rule)": ("sweep_uniform",),
-            "FedAvg + DP (uniform)": ("fedavg_dp", "sweep_fedavg_dp")}  # fmt: skip
+    spec = {"FedGuard (adaptive)": ("fedguard", "sweep_adaptive", "sweep_adaptive_ext"),
+            "FedGuard (uniform rule)": ("sweep_uniform",), "FedAvg + DP (uniform)": ("fedavg_dp", "sweep_fedavg_dp")}  # fmt: skip
     rows = []
-    for eps in [1.0, 2.0, 3.0, 5.0, 8.0]:
+    ext = sorted(float(e) for e in df[df.experiment == "sweep_adaptive_ext"].epsilon.dropna().unique())
+    for eps in [1.0, 2.0, 3.0, 5.0, 8.0, *ext]:  # large-eps extension (seed 0 only) appended when run
         row: dict[str, Any] = {"epsilon": eps}
         for label, exps in spec.items():
             sub = df[df.experiment.isin(exps) & (df.epsilon == eps) & (df.partition == "unit")]

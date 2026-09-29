@@ -377,8 +377,11 @@ def run_proof(out_md: Path | None = None) -> dict[str, Any]:
         "- GPU: " + ", ".join(sorted({j.device for j in gpu_jobs if j.device and not j.device.startswith('GPU (')})) + ".",
         "",
         "Failed, killed, timed-out and superseded runs are kept on purpose. They document the bugs and operational problems found and "
-        "fixed during the project (docs/decisions.md D19–D36): an optimizer-state bug that invalidated the first DP results, hung "
-        "jobs, a watchdog false positive, GPU memory overflow with 3–4 concurrent jobs, and a LightGBM early-stopping bug.",
+        "fixed during the project (docs/decisions.md D19–D38): an optimizer-state bug that invalidated the first DP results, a "
+        "fixed DP learning rate that made the ε sweep collapse at large ε (superseded by the σ-scaled rule), hung jobs, watchdog "
+        "false positives (including a kill of a new job whose pid Windows had reused), GPU memory overflow with several concurrent "
+        "DP jobs, system-RAM exhaustion (MemoryError) caused by the OneDrive client holding ~31 GB, and a LightGBM "
+        "early-stopping bug.",
         "",
         "## What this does and does not capture",
         "",
