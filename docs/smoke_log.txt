@@ -1,0 +1,27 @@
+# smoke run 2026-09-30 13:09:12 +0530, commit a8eeefb
+  ok (4 s)
+> fedguard fl run -c experiments/fedguard --fast
+  ok (17 s)
+> fedguard fl run -c experiments/fedguard_async_nodp --fast
+  ok (4 s)
+> fedguard mc-predict -e async_nodp --fast
+  ok (5 s)
+> fedguard alerts -e async_nodp --fast
+  ok (5 s)
+> fedguard alerts -e fedguard --fast
+  ok (5 s)
+> fedguard explain -e fedguard --seeds 0 --fast
+  ok (6 s)
+> fedguard explain -e async_nodp --seeds 0 --fast
+  ok (5 s)
+> fedguard attack -e fedavg --fast
+  ok (10 s)
+> fedguard report --fast
+  ok (3 s)
+> fedguard export --fast
+  ok (5 s)
+> pytest tests/test_app.py (pages render on the fast artefacts)
+........................                                                 [100%]
+24 passed in 8.31s
+SMOKE OK in 133 s
+exit code: 0

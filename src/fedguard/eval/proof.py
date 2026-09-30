@@ -46,6 +46,7 @@ STATUS_COLORS = {
     "done": "#2E7D5B",
     "done (finalized)": "#6FAF8F",
     "training done; eval killed": "#D08C3A",
+    "superseded (training done; eval killed)": "#E8C49A",
     "running": "#1F6E8C",
     "killed/failed": "#C8413A",
     "timeout": "#B8790F",
@@ -174,15 +175,17 @@ def collect_run_dirs(root: Path) -> list[Job]:
         else:
             end = datetime.fromtimestamp(max(f.stat().st_mtime for f in d.rglob("*") if f.is_file()))
             status, basis = "killed/failed", "last file write"
-        if superseded:
-            status = f"superseded ({'done' if status == 'done' else 'killed/failed'})"
         fin = _finalized(d)
         if status == "done" and fin is not None:  # D37: training process died in evaluation; finished later
+            # split even after the run was archived: otherwise the idle hours between training and finalize count
             t_end = start + timedelta(seconds=fin["training_wall_s"])
-            jobs.append(Job(name, seed, start, t_end, "training done; eval killed", "events.jsonl 'done' wall time",
+            first = "superseded (training done; eval killed)" if superseded else "training done; eval killed"
+            jobs.append(Job(name, seed, start, t_end, first, "events.jsonl 'done' wall time",
                             device, "run dir", detail, {}, fast=rel.parts[0].endswith("_fast")))  # fmt: skip
             start, basis = end - timedelta(seconds=fin["eval_wall_s"]), "DONE marker (fl finalize, D37)"
             status = "done (finalized)"
+        if superseded:
+            status = f"superseded ({'done' if status.startswith('done') else 'killed/failed'})"
         jobs.append(Job(name, seed, start, end, status, basis, device, "run dir", detail, metrics,
                         fast=rel.parts[0].endswith("_fast")))  # fmt: skip
     return jobs

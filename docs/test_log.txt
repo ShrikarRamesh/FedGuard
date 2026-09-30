@@ -1,0 +1,7 @@
+# pytest run 2026-09-30 13:07:05 +0530, commit a8eeefb
+......sssss............................................s................ [ 70%]
+..............................                                           [100%]
+=========================== short test summary info ===========================
+SKIPPED [5] tests\test_app.py:56: only in `make smoke` (FEDGUARD_SMOKE_RESULTS_DIR unset)
+SKIPPED [1] tests\test_export.py:69: results/results.json not produced yet (run `fedguard export`)
+96 passed, 6 skipped in 123.84s (0:02:03)
